@@ -1,0 +1,16 @@
+{
+  "domain": "velux_active",
+  "name": "velux_active",
+  "version": "0.1.0",
+  "codeowners": ["@mikz"],
+  "config_flow": true,
+  "single_config_entry": true,
+  "dependencies": [],
+  "documentation": "https://www.home-assistant.io/integrations/velux_active",
+  "homekit": {},
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "supported_platforms": ["sensor", "binary_sensor", "cover"]
+}
