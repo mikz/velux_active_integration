@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -72,6 +72,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry) 
     domain["homes"] = list(coordinator.data.keys())
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    async def async_handle_refresh(call: ServiceCall) -> None:
+        """Service handler for creating backups."""
+        await coordinator.async_refresh()
+
+    hass.services.async_register(DOMAIN, "refresh", async_handle_refresh)
 
     return True
 
