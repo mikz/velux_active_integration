@@ -8,18 +8,18 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
-from .const import DOMAIN
+from .coordinator import VeluxActiveConfigEntry
+from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
     """Set up Velux Active sensors from a config entry."""
     coordinator = entry.runtime_data
     sensors = []
@@ -42,13 +42,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 def create_gateway_sensors(coordinator, device):
     """Create sensors for Velux Gateway."""
     sensors = []
-    device_name = f"Gateway {device.name}"
     # Sensor for wifi_strength
     sensors.append(
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Wi-Fi Strength",
+            name="Wi-Fi Strength",
             attribute="wifi_strength",
             device_class=SensorDeviceClass.SIGNAL_STRENGTH,
             native_unit_of_measurement="dBm",
@@ -60,7 +59,7 @@ def create_gateway_sensors(coordinator, device):
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Last Seen",
+            name="Last Seen",
             attribute="last_seen",
             device_class=SensorDeviceClass.TIMESTAMP,
         )
@@ -72,13 +71,12 @@ def create_gateway_sensors(coordinator, device):
 def create_cover_sensors(coordinator, device):
     """Create sensors for Velux Window or Shutter."""
     sensors = []
-    device_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
     # Sensor for target_position
     sensors.append(
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Target Position",
+            name="Target Position",
             attribute="target_position",
             native_unit_of_measurement=PERCENTAGE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -90,7 +88,7 @@ def create_cover_sensors(coordinator, device):
             VeluxSensor(
                 coordinator,
                 device,
-                name=f"{device_name} Rain Position",
+                name="Rain Position",
                 attribute="rain_position",
                 native_unit_of_measurement=PERCENTAGE,
                 state_class=SensorStateClass.MEASUREMENT,
@@ -101,7 +99,7 @@ def create_cover_sensors(coordinator, device):
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Last Seen",
+            name="Last Seen",
             attribute="last_seen",
             device_class=SensorDeviceClass.TIMESTAMP,
         )
@@ -112,13 +110,12 @@ def create_cover_sensors(coordinator, device):
 def create_switch_sensors(coordinator, device):
     """Create sensors for Velux Switch."""
     sensors = []
-    device_name = f"Switch {device.id[-4:]}"
     # Sensor for battery_level
     sensors.append(
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Battery Level",
+            name="Battery Level",
             attribute="battery_level",
             device_class=SensorDeviceClass.VOLTAGE,
             native_unit_of_measurement=UnitOfElectricPotential.MILLIVOLT,
@@ -131,7 +128,7 @@ def create_switch_sensors(coordinator, device):
             VeluxSensor(
                 coordinator,
                 device,
-                name=f"{device_name} Battery Percent",
+                name="Battery Percent",
                 attribute="battery_percent",
                 device_class=SensorDeviceClass.BATTERY,
                 native_unit_of_measurement=PERCENTAGE,
@@ -143,7 +140,7 @@ def create_switch_sensors(coordinator, device):
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} RF Strength",
+            name="RF Strength",
             attribute="rf_strength",
             device_class=SensorDeviceClass.SIGNAL_STRENGTH,
             native_unit_of_measurement="dBm",
@@ -155,7 +152,7 @@ def create_switch_sensors(coordinator, device):
         VeluxSensor(
             coordinator,
             device,
-            name=f"{device_name} Last Seen",
+            name="Last Seen",
             attribute="last_seen",
             device_class=SensorDeviceClass.TIMESTAMP,
         )
@@ -164,7 +161,7 @@ def create_switch_sensors(coordinator, device):
     return sensors
 
 
-class VeluxSensor(CoordinatorEntity, SensorEntity):
+class VeluxSensor(VeluxEntity, SensorEntity):
     """Representation of a Velux sensor."""
 
     def __init__(
@@ -178,9 +175,7 @@ class VeluxSensor(CoordinatorEntity, SensorEntity):
         state_class=None,
     ):
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._device_id = device.id
-        self._home = device.home
+        super().__init__(coordinator, device)
         self._attr_unique_id = f"{device.id}_{attribute}"
         self._attr_name = name
         self._attribute = attribute
@@ -189,23 +184,20 @@ class VeluxSensor(CoordinatorEntity, SensorEntity):
         self._attr_state_class = state_class
 
     @property
-    def device(self):
-        """Return the current device object from the coordinator data."""
-        devices = self.coordinator.data.get(self._home, {}).get("devices", [])
-        for dev in devices:
-            if dev.id == self._device_id:
-                return dev
-        return None
-
-    @property
     def native_value(self):
         """Return the value reported by the sensor."""
         device = self.device
         if device:
             value = getattr(device, self._attribute, None)
             if self._attribute == "last_seen" and value is not None:
-                # Convert the integer timestamp to a timezone-aware datetime object
-                return datetime.fromtimestamp(value, UTC)
+                if isinstance(value, datetime):
+                    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    try:
+                        return datetime.fromtimestamp(value, UTC)
+                    except ValueError, OverflowError, OSError:
+                        return None
+                return None
             return value
         return None
 
@@ -220,18 +212,3 @@ class VeluxSensor(CoordinatorEntity, SensorEntity):
                 "bridge": getattr(device, "bridge", None),
             }
         return {}
-
-    @property
-    def device_info(self):
-        """Reference the device registered before platform setup."""
-        return {"identifiers": {(DOMAIN, self._device_id)}}
-
-    @property
-    def available(self):
-        """Hide stale measurements after a failed poll or unreachable device."""
-        device = self.device
-        return (
-            super().available
-            and device is not None
-            and getattr(device, "reachable", None) is not False
-        )

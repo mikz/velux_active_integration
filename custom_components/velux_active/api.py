@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, fields
 from datetime import datetime, timedelta
+from time import monotonic
 from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -76,9 +77,12 @@ class VeluxActiveAPI:
         self.auth_token: AuthToken | None = None
         self._credentials: tuple[str, str] | None = None
         self._token_lock = asyncio.Lock()
+        self._retry_at = 0.0
         self._topology: dict[str, dict[str, dict[str, Any]]] = {}
 
     async def _request(self, path, *, data=None, token=None):
+        if monotonic() < self._retry_at:
+            raise RateLimitError(max(1, int(self._retry_at - monotonic()) + 1))
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         try:
             async with self._websession.request(
@@ -96,7 +100,9 @@ class VeluxActiveAPI:
                 code = error.get("code") if isinstance(error, dict) else error
                 if response.status == 429 or code in (26, "26"):
                     delay = response.headers.get("Retry-After", "60")
-                    raise RateLimitError(min(max(int(delay), 1), 3600) if delay.isdigit() else 60)
+                    retry_after = min(max(int(delay), 1), 3600) if delay.isdigit() else 60
+                    self._retry_at = monotonic() + retry_after
+                    raise RateLimitError(retry_after)
                 if response.status in (401, 403) or code in (
                     1,
                     2,
@@ -192,10 +198,15 @@ class VeluxActiveAPI:
         payload = await self._api_request("/api/homesdata")
         try:
             homes = payload["body"]["homes"]
+            if not isinstance(homes, list):
+                raise TypeError
             result = []
             for home in homes:
                 home_id = home["id"]
-                self._topology[home_id] = {m["id"]: m for m in home.get("modules", [])}
+                modules = home.get("modules", [])
+                if not isinstance(modules, list):
+                    raise TypeError
+                self._topology[home_id] = {m["id"]: m for m in modules}
                 result.append(VeluxHome(home_id, home.get("name", "Home")))
             return result
         except (KeyError, TypeError, AttributeError) as err:
@@ -205,6 +216,8 @@ class VeluxActiveAPI:
         payload = await self._api_request("/api/homestatus", {"home_id": home.id})
         try:
             records = payload["body"]["home"]["modules"]
+            if not isinstance(records, list):
+                raise TypeError
             modules = []
             for record in records:
                 # Never retain a previous rain/position/reachability measurement.

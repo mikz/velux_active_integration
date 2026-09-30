@@ -3,7 +3,6 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-import aiohttp
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.helpers import entity_registry as er
@@ -13,18 +12,9 @@ from custom_components.velux_active.api import (
     APIConnectionError,
     InvalidAuthError,
     RateLimitError,
-    VeluxActiveAPI,
     device_from_module,
 )
-from tests.lab.cloud import PASSWORD, USERNAME, Cloud
-
-
-@pytest.fixture
-async def cloud(aiohttp_server, socket_enabled):
-    simulator = Cloud()
-    server = await aiohttp_server(simulator.app())
-    async with aiohttp.ClientSession() as session:
-        yield simulator, VeluxActiveAPI(session, base_url=str(server.make_url("")))
+from tests.lab.cloud import PASSWORD, USERNAME
 
 
 async def test_modern_topology_merges_metadata_and_accepts_sparse_status(cloud):
@@ -93,7 +83,7 @@ async def test_native_ha_setup_rain_outage_reload_and_reauth(hass, cloud):
         config_entry=entry,
         suggested_object_id="gateway_lab_gateway_is_raining",
     )
-    with patch("custom_components.velux_active.VeluxActiveAPI", return_value=api):
+    with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.state is ConfigEntryState.LOADED
@@ -126,14 +116,14 @@ async def test_native_ha_setup_rain_outage_reload_and_reauth(hass, cloud):
         assert entry.data["password"] == "changed-lab-password"
         assert hass.states.get(rain).state == "on"
         assert await hass.config_entries.async_unload(entry.entry_id)
-        assert not hass.services.has_service("velux_active", "refresh")
+        assert hass.services.has_service("velux_active", "refresh")
 
 
 async def test_native_user_flow_distinguishes_authentication_from_outage(hass, cloud):
     simulator, api = cloud
     with (
         patch("custom_components.velux_active.config_flow.VeluxActiveAPI", return_value=api),
-        patch("custom_components.velux_active.VeluxActiveAPI", return_value=api),
+        patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api),
     ):
         flow = await hass.config_entries.flow.async_init("velux_active", context={"source": "user"})
         result = await hass.config_entries.flow.async_configure(

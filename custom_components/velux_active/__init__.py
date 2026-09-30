@@ -1,69 +1,37 @@
-"""Set up VELUX ACTIVE cloud sensors."""
+"""Set up VELUX ACTIVE cloud sensors and its refresh action."""
 
-import logging
-from datetime import timedelta
-
-from homeassistant.config_entries import ConfigEntry
+import voluptuous as vol
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers import aiohttp_client
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import (
-    APIConnectionError,
-    InvalidAuthError,
-    RateLimitError,
-    VeluxActiveAPI,
-    device_from_module,
-)
 from .const import DOMAIN
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 
-_LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.COVER, Platform.SENSOR, Platform.BINARY_SENSOR]
-type VeluxActiveConfigEntry = ConfigEntry[VeluxCoordinator]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-class VeluxCoordinator(DataUpdateCoordinator):
-    """Poll status once per minute and let HA handle retries and reauthentication."""
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the zero-argument action independently of entry loading."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
-        super().__init__(
-            hass,
-            _LOGGER,
-            name=DOMAIN,
-            config_entry=entry,
-            update_interval=timedelta(minutes=1),
-        )
-        self.api = VeluxActiveAPI(aiohttp_client.async_get_clientsession(hass))
-        self.homes = None
+    async def async_handle_refresh(call: ServiceCall) -> None:
+        entries = hass.config_entries.async_entries(DOMAIN)
+        entry = next((entry for entry in entries if entry.state is ConfigEntryState.LOADED), None)
+        if entry is None:
+            raise ServiceValidationError("No VELUX ACTIVE account is loaded")
+        coordinator = entry.runtime_data
+        success, error = await coordinator.async_manual_refresh()
+        if entry.state is not ConfigEntryState.LOADED or entry.runtime_data is not coordinator:
+            raise ServiceValidationError("VELUX ACTIVE was unloaded during refresh")
+        if not success:
+            raise HomeAssistantError("VELUX ACTIVE cloud refresh failed") from error
 
-    async def _async_update_data(self):
-        try:
-            if self.api.auth_token is None:
-                await self.api.authenticate(
-                    self.config_entry.data["username"], self.config_entry.data["password"]
-                )
-            if self.homes is None:
-                self.homes = await self.api.get_home_data()
-            data = {}
-            for home in self.homes:
-                modules = await self.api.get_home_statuses(home)
-                data[home] = {
-                    "devices": [
-                        device
-                        for module in modules
-                        if (device := device_from_module(module)) is not None
-                    ]
-                }
-            return data
-        except InvalidAuthError as err:
-            raise ConfigEntryAuthFailed("VELUX login must be renewed") from err
-        except RateLimitError as err:
-            raise UpdateFailed(str(err), retry_after=err.retry_after) from err
-        except APIConnectionError as err:
-            raise UpdateFailed(str(err)) from err
+    hass.services.async_register(DOMAIN, "refresh", async_handle_refresh, schema=vol.Schema({}))
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry) -> bool:
@@ -90,16 +58,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry) 
             gateways[device.id] = registered.id
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    async def async_handle_refresh(call: ServiceCall) -> None:
-        await coordinator.async_request_refresh()
-
-    hass.services.async_register(DOMAIN, "refresh", async_handle_refresh)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload platforms and remove the refresh action."""
-    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        return False
-    hass.services.async_remove(DOMAIN, "refresh")
-    return True
+async def async_unload_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry) -> bool:
+    """Unload entities; HA shuts down entry-owned coordinator subscriptions."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

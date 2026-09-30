@@ -3,17 +3,17 @@
 import logging
 
 from homeassistant.components.cover import CoverDeviceClass, CoverEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import VeluxShutterData, VeluxWindowData
-from .const import DOMAIN
+from .coordinator import VeluxActiveConfigEntry
+from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
     """Set up Velux Active covers from a config entry."""
     coordinator = entry.runtime_data
     covers = []
@@ -25,27 +25,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 covers.append(VeluxCover(coordinator, device, is_window=True))
             elif isinstance(device, VeluxShutterData):
                 covers.append(VeluxCover(coordinator, device, is_window=False))
-            else:
-                _LOGGER.debug("Device is not a window or shutter: %s", device)
 
     async_add_entities(covers)
 
     return True
 
 
-class VeluxCover(CoordinatorEntity, CoverEntity):
+class VeluxCover(VeluxEntity, CoverEntity):
     """Representation of a Velux cover (window or shutter)."""
 
     def __init__(self, coordinator, device, is_window):
         """Initialize the cover."""
-        super().__init__(coordinator)
-        self._device_id = device.id
-        self._home = device.home
+        super().__init__(coordinator, device)
         self._is_window = is_window
         self._attr_unique_id = device.id
 
         # Generate a name using available attributes
-        self._attr_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
+        self._attr_name = None
 
         self._attr_device_class = CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
 
@@ -56,15 +52,6 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
     def supported_features(self) -> int:
         """Flag supported features."""
         return 0
-
-    @property
-    def device(self):
-        """Return the current device object from the coordinator data."""
-        devices = self.coordinator.data.get(self._home, {}).get("devices", [])
-        for dev in devices:
-            if dev.id == self._device_id:
-                return dev
-        return None
 
     @property
     def is_closed(self):
@@ -100,14 +87,3 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
                 "secure_position": getattr(device, "secure_position", None),
             }
         return {}
-
-    @property
-    def available(self):
-        """Return True if entity is available."""
-        device = self.device
-        return super().available and device is not None and device.reachable is not False
-
-    @property
-    def device_info(self):
-        """Reference the device registered before platform setup."""
-        return {"identifiers": {(DOMAIN, self._device_id)}}

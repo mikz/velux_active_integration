@@ -73,6 +73,31 @@ class Lab:
         await self.request("POST", "/api/services/velux_active/refresh", {})
         await eventually(self.state, lambda state: state == expected)
 
+    async def refresh_failure(self):
+        async with self.session.post(
+            self.base + "/api/services/velux_active/refresh",
+            json={},
+            headers={"Authorization": f"Bearer {self.token}"},
+        ) as response:
+            assert response.status in (400, 500), "Cloud failure must fail the HA action"
+        await eventually(self.state, lambda state: state == "unavailable")
+
+    async def preferences(self):
+        entities = {
+            e["unique_id"]: {
+                key: e.get(key) for key in ("entity_id", "name", "disabled_by", "device_id")
+            }
+            for e in await self.ws("config/entity_registry/list")
+            if e["config_entry_id"] == self.entry
+        }
+        device_ids = {e["device_id"] for e in entities.values()}
+        devices = {
+            d["id"]: d.get("name_by_user")
+            for d in await self.ws("config/device_registry/list")
+            if d["id"] in device_ids
+        }
+        return {"entities": entities, "devices": devices}
+
     async def loaded(self):
         entries = await self.ws("config_entries/get")
         return any(e["entry_id"] == self.entry and e["state"] == "loaded" for e in entries)
@@ -169,6 +194,54 @@ class Lab:
             await self.refresh("off")
             assert (await self.sim())["counts"].get("refresh_token", 0) == before
 
+        async with self.scenario("packaged-local-brand-image"):
+            async with self.session.get(
+                self.base + "/api/brands/integration/velux_active/icon.png",
+                headers={"Authorization": f"Bearer {self.token}"},
+            ) as response:
+                assert response.status == 200
+                assert response.content_type == "image/png"
+                payload = await response.read()
+            import zipfile
+
+            with zipfile.ZipFile("/opt/velux-active/velux_active.zip") as archive:
+                assert payload == archive.read("brand/icon.png")
+
+        async with self.scenario("synthetic-legacy-registry-preferences"):
+            await self.ws(
+                "config/entity_registry/update",
+                entity_id=self.original_ids["lab-gateway_is_raining"],
+                name="My rain",
+            )
+            await self.ws(
+                "config/entity_registry/update",
+                entity_id=self.original_ids["lab-window_target_position"],
+                name="My target",
+                disabled_by="user",
+            )
+            await self.ws(
+                "config/entity_registry/update",
+                entity_id=self.original_ids["lab-switch_battery_percent"],
+                new_entity_id="sensor.switch_itch_battery_percent",
+                name="My battery",
+            )
+            registry = await self.preferences()
+            for device_id in registry["devices"]:
+                await self.ws(
+                    "config/device_registry/update",
+                    device_id=device_id,
+                    name_by_user="My synthetic device",
+                )
+            self.original_ids = await self.registry()
+            self.original_preferences = await self.preferences()
+            disabled = self.original_ids["lab-window_target_position"]
+
+            async def disabled_absent():
+                states = await self.request("GET", "/api/states")
+                return all(state["entity_id"] != disabled for state in states)
+
+            await eventually(disabled_absent)
+
         async with self.scenario("rain-transitions-and-missing-measurement"):
             await self.sim({"rain": True})
             await self.refresh("on")
@@ -187,9 +260,12 @@ class Lab:
             before = (await self.sim())["counts"]["password"]
             for failure in (503, 429, 403):
                 await self.sim({"outage": failure})
-                await self.refresh("unavailable")
+                await self.refresh_failure()
                 assert (await self.sim())["counts"]["password"] == before
                 await self.sim({"outage": 0})
+                if failure in (429, 403):
+                    # The real-time cloud Retry-After deadline must expire.
+                    await asyncio.sleep(2.1)
                 await self.refresh("off")
 
         async with self.scenario("rejected-access-token-and-refresh-rotation"):
@@ -206,6 +282,7 @@ class Lab:
             await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
             await eventually(self.loaded)
             assert await self.registry() == self.original_ids
+            assert await self.preferences() == self.original_preferences
             await self.sim({"rain": True})
             await self.refresh("on")
 
@@ -224,13 +301,14 @@ class Lab:
             await eventually(self.loaded, timeout=120)
             await eventually(self.state, lambda value: value == "on")
             assert await self.registry() == self.original_ids
+            assert await self.preferences() == self.original_preferences
 
         async with self.scenario("native-reauthentication-preserves-entry"):
             new_password = "changed-synthetic-password"
             await self.sim(
                 {"password": new_password, "invalidate_access": True, "invalidate_refresh": True}
             )
-            await self.refresh("unavailable")
+            await self.refresh_failure()
 
             async def reauth():
                 return [
@@ -249,6 +327,7 @@ class Lab:
             await eventually(self.loaded)
             await eventually(self.state, lambda value: value == "on")
             assert await self.registry() == self.original_ids
+            assert await self.preferences() == self.original_preferences
             await self.sim({"rain": False})
             await self.refresh("off")
 
@@ -259,6 +338,7 @@ class Lab:
                     "scenarios": self.results,
                     "artifact_sha256": os.environ["LAB_ARTIFACT_SHA256"],
                     "entities": self.original_ids,
+                    "registry_preferences": self.original_preferences,
                     "cloud_counts": (await self.sim())["counts"],
                 },
                 indent=2,

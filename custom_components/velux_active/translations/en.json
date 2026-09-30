@@ -11,7 +11,7 @@
       },
       "reauth_confirm": {
         "title": "VELUX ACTIVE account",
-        "description": "Enter the credentials you use in the VELUX ACTIVE app.",
+        "description": "Renew the password for the existing email address. Switching accounts requires removing the integration first.",
         "data": {
           "username": "Email address",
           "password": "Password"
@@ -19,7 +19,7 @@
       },
       "reconfigure": {
         "title": "VELUX ACTIVE account",
-        "description": "Enter the credentials you use in the VELUX ACTIVE app.",
+        "description": "Renew the password for the existing email address. Switching accounts requires removing the integration first.",
         "data": {
           "username": "Email address",
           "password": "Password"
@@ -28,7 +28,8 @@
     },
     "error": {
       "invalid_auth": "VELUX rejected the login. Check your email address and password.",
-      "cannot_connect": "Cannot connect to the VELUX cloud. Try again later."
+      "cannot_connect": "Cannot connect to the VELUX cloud. Try again later.",
+      "wrong_account": "Use the email address already configured for this account. Remove the integration to switch accounts."
     },
     "abort": {
       "single_instance_allowed": "Only one VELUX ACTIVE account can be configured.",

@@ -1,46 +1,50 @@
-"""Configure or renew VELUX account credentials through Home Assistant."""
+"""Configure an account or renew its password without changing account identity."""
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers import aiohttp_client
+from homeassistant.helpers import aiohttp_client, selector
 
 from .api import APIConnectionError, InvalidAuthError, VeluxActiveAPI
 from .const import DOMAIN
 
 
 class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Preserve the original config entry while replacing expired credentials."""
+    """Keep the original username/password storage and version-one identity."""
 
     VERSION = 1
 
-    async def _form(self, step_id, user_input):
+    async def _form(self, step_id, user_input, entry=None):
         errors = {}
         if user_input is not None:
-            api = VeluxActiveAPI(aiohttp_client.async_get_clientsession(self.hass))
-            try:
-                await api.authenticate(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
-                await api.get_home_data()
-            except InvalidAuthError:
-                errors["base"] = "invalid_auth"
-            except APIConnectionError:
-                errors["base"] = "cannot_connect"
+            if entry is not None and user_input[CONF_USERNAME] != entry.data[CONF_USERNAME]:
+                errors["base"] = "wrong_account"
             else:
-                if step_id == "reauth_confirm":
-                    return self.async_update_reload_and_abort(
-                        self._get_reauth_entry(), data_updates=user_input
-                    )
-                if step_id == "reconfigure":
-                    return self.async_update_reload_and_abort(
-                        self._get_reconfigure_entry(), data_updates=user_input
-                    )
-                return self.async_create_entry(title="Velux Active", data=user_input)
+                api = VeluxActiveAPI(aiohttp_client.async_get_clientsession(self.hass))
+                try:
+                    await api.authenticate(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
+                    await api.get_home_data()
+                except InvalidAuthError:
+                    errors["base"] = "invalid_auth"
+                except APIConnectionError:
+                    errors["base"] = "cannot_connect"
+                else:
+                    if entry is not None:
+                        return self.async_update_reload_and_abort(entry, data_updates=user_input)
+                    return self.async_create_entry(title="Velux Active", data=user_input)
+        username = vol.Required(CONF_USERNAME)
+        if entry is not None:
+            username = vol.Required(CONF_USERNAME, default=entry.data[CONF_USERNAME])
         return self.async_show_form(
             step_id=step_id,
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_USERNAME): str,
-                    vol.Required(CONF_PASSWORD): str,
+                    username: selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
+                    ),
+                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
                 }
             ),
             errors=errors,
@@ -53,7 +57,7 @@ class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input=None):
-        return await self._form("reauth_confirm", user_input)
+        return await self._form("reauth_confirm", user_input, self._get_reauth_entry())
 
     async def async_step_reconfigure(self, user_input=None):
-        return await self._form("reconfigure", user_input)
+        return await self._form("reconfigure", user_input, self._get_reconfigure_entry())

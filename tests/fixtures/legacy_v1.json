@@ -1,0 +1,12 @@
+{
+  "entry_id": "synthetic-legacy-entry",
+  "version": 1,
+  "entities": [
+    {"domain": "cover", "unique_id": "lab-window", "entity_id": "cover.window_ndow", "name": "My window", "device": "lab-window", "disabled": false},
+    {"domain": "cover", "unique_id": "lab-shutter", "entity_id": "cover.shutter_tter", "name": "My shutter", "device": "lab-shutter", "disabled": false},
+    {"domain": "binary_sensor", "unique_id": "lab-gateway_is_raining", "entity_id": "binary_sensor.gateway_lab_gateway_is_raining", "name": "My rain", "device": "lab-gateway", "disabled": false},
+    {"domain": "binary_sensor", "unique_id": "lab-window_reachable", "entity_id": "binary_sensor.window_ndow_reachable", "name": "My connectivity", "device": "lab-window", "disabled": false},
+    {"domain": "sensor", "unique_id": "lab-window_target_position", "entity_id": "sensor.window_ndow_target_position", "name": "My target", "device": "lab-window", "disabled": true},
+    {"domain": "sensor", "unique_id": "lab-switch_battery_percent", "entity_id": "sensor.switch_itch_battery_percent", "name": "My battery", "device": "lab-switch", "disabled": false}
+  ]
+}

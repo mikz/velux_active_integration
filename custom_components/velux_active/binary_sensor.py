@@ -6,17 +6,17 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
-from .const import DOMAIN
+from .coordinator import VeluxActiveConfigEntry
+from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
     """Set up Velux Active binary sensors from a config entry."""
     coordinator = entry.runtime_data
     binary_sensors = []
@@ -39,13 +39,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 def create_gateway_binary_sensors(coordinator, device):
     """Create binary sensors for Velux Gateway."""
     sensors = []
-    device_name = f"Gateway {device.name}"
     # Sensor for is_raining
     sensors.append(
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Is Raining",
+            name="Is Raining",
             attribute="is_raining",
             device_class=BinarySensorDeviceClass.MOISTURE,
         )
@@ -55,7 +54,7 @@ def create_gateway_binary_sensors(coordinator, device):
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Locked",
+            name="Locked",
             attribute="unlocked",
             device_class=BinarySensorDeviceClass.LOCK,
         )
@@ -65,7 +64,7 @@ def create_gateway_binary_sensors(coordinator, device):
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Locking",
+            name="Locking",
             attribute="locking",
             device_class=BinarySensorDeviceClass.MOVING,
         )
@@ -75,7 +74,7 @@ def create_gateway_binary_sensors(coordinator, device):
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Calibrating",
+            name="Calibrating",
             attribute="calibrating",
             device_class=BinarySensorDeviceClass.PROBLEM,
         )
@@ -85,7 +84,7 @@ def create_gateway_binary_sensors(coordinator, device):
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Busy",
+            name="Busy",
             attribute="busy",
             device_class=BinarySensorDeviceClass.RUNNING,
         )
@@ -96,13 +95,12 @@ def create_gateway_binary_sensors(coordinator, device):
 def create_cover_binary_sensors(coordinator, device):
     """Create binary sensors for Velux Window or Shutter."""
     sensors = []
-    device_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
     # Sensor for reachable
     sensors.append(
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Reachable",
+            name="Reachable",
             attribute="reachable",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
         )
@@ -112,7 +110,7 @@ def create_cover_binary_sensors(coordinator, device):
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Silent Mode",
+            name="Silent Mode",
             attribute="silent",
             device_class=BinarySensorDeviceClass.RUNNING,
         )
@@ -123,13 +121,12 @@ def create_cover_binary_sensors(coordinator, device):
 def create_switch_binary_sensors(coordinator, device):
     """Create binary sensors for Velux Switch."""
     sensors = []
-    device_name = f"Switch {device.id[-4:]}"
     # Sensor for reachable
     sensors.append(
         VeluxBinarySensor(
             coordinator,
             device,
-            name=f"{device_name} Reachable",
+            name="Reachable",
             attribute="reachable",
             device_class=BinarySensorDeviceClass.CONNECTIVITY,
         )
@@ -137,7 +134,7 @@ def create_switch_binary_sensors(coordinator, device):
     return sensors
 
 
-class VeluxBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class VeluxBinarySensor(VeluxEntity, BinarySensorEntity):
     """Representation of a Velux binary sensor."""
 
     def __init__(
@@ -149,22 +146,11 @@ class VeluxBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device_class=None,
     ):
         """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._device_id = device.id
-        self._home = device.home
+        super().__init__(coordinator, device)
         self._attr_unique_id = f"{device.id}_{attribute}"
         self._attr_name = name
         self._attribute = attribute
         self._attr_device_class = device_class
-
-    @property
-    def device(self):
-        """Return the current device object from the coordinator data."""
-        devices = self.coordinator.data.get(self._home, {}).get("devices", [])
-        for dev in devices:
-            if dev.id == self._device_id:
-                return dev
-        return None
 
     @property
     def is_on(self):
@@ -184,16 +170,8 @@ class VeluxBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return {}
 
     @property
-    def device_info(self):
-        """Reference the device registered before platform setup."""
-        return {"identifiers": {(DOMAIN, self._device_id)}}
-
-    @property
     def available(self):
-        """Return True if entity is available."""
-        device = self.device
-        return (
-            super().available
-            and device is not None
-            and getattr(device, "reachable", None) is not False
-        )
+        """Connectivity stays available to report a disconnected device."""
+        if self._attribute == "reachable":
+            return self.coordinator.last_update_success and self.device is not None
+        return super().available
