@@ -11,7 +11,9 @@
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/mikz/velux_active_integration/issues",
-  "requirements": [],
+  "requirements": [
+    "velux-active-client==0.1.0"
+  ],
   "single_config_entry": true,
   "ssdp": [],
   "version": "0.2.0",

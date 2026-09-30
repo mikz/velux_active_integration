@@ -14,10 +14,12 @@ import secrets
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from scripts.client_release import validate_wheel  # noqa: E402
 from tests.lab.isolation import validate_compose, validate_inspect, validate_routes  # noqa: E402
 from tests.lab.redaction import sanitize_artifacts  # noqa: E402
 
@@ -65,17 +67,22 @@ def pinned_image(reference):
     return data["RepoDigests"][0]
 
 
-def image_references(ha_version, digest):
+def image_references(ha_version, digest, client_digest):
     """Keep each prepared version reachable when another version is prepared."""
     return {
-        role: f"velux-active-lab-{role}:{ha_version}-{digest[:12]}"
+        role: f"velux-active-lab-{role}:{ha_version}-{digest[:12]}-{client_digest[:12]}"
         for role in ("ha", "simulator", "runner")
     }
 
 
 def lab_source_hashes():
     """Bind prepared images to the harness that runtime will actually execute."""
-    files = [ROOT / "scripts/lab.py", ROOT / "tests/__init__.py", ROOT / "uv.lock"]
+    files = [
+        ROOT / "scripts/lab.py",
+        ROOT / "scripts/cloud_smoke.py",
+        ROOT / "tests/__init__.py",
+        ROOT / "uv.lock",
+    ]
     files.extend((ROOT / "tests/fixtures").glob("*.json"))
     files.extend(
         path
@@ -86,6 +93,17 @@ def lab_source_hashes():
         str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(files)
     }
+
+
+def client_artifact():
+    project = tomllib.loads((ROOT / "packages/velux-active-client/pyproject.toml").read_text())
+    version = project["project"]["version"]
+    manifest = json.loads((ROOT / "custom_components/velux_active/manifest.json").read_text())
+    if manifest["requirements"] != [f"velux-active-client=={version}"]:
+        raise RuntimeError("Local client version does not match the integration pin")
+    wheel = ROOT / "dist/client" / f"velux_active_client-{version}-py3-none-any.whl"
+    validate_wheel(wheel)
+    return wheel, version, hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
 def prepare(args):
@@ -105,6 +123,7 @@ def _prepare(args):
     command([sys.executable, "scripts/release.py", "verify"], capture=False)
     archive = ROOT / "dist/velux_active.zip"
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    client_wheel, client_version, client_digest = client_artifact()
     prepared_dir = ROOT / ".lab"
     prepared_dir.mkdir(exist_ok=True)
     sources = lab_source_hashes()
@@ -135,7 +154,7 @@ def _prepare(args):
     (cert / "cloud.key").chmod(0o600)
     ha_base = pinned_image(f"ghcr.io/home-assistant/home-assistant:{args.ha_version}")
     python_base = pinned_image("python:3.14.2-slim-bookworm")
-    references = image_references(args.ha_version, digest)
+    references = image_references(args.ha_version, digest, client_digest)
     for role, reference in references.items():
         command(
             [
@@ -148,6 +167,8 @@ def _prepare(args):
                 f"HA_BASE={ha_base}",
                 "--build-arg",
                 f"PYTHON_BASE={python_base}",
+                "--build-arg",
+                f"CLIENT_WHEEL_FILENAME={client_wheel.name}",
                 "-t",
                 reference,
                 ".",
@@ -157,9 +178,14 @@ def _prepare(args):
         )
     if sources != lab_source_hashes():
         raise RuntimeError("Lab sources changed during image preparation; run prepare again")
+    if client_artifact()[2] != client_digest:
+        raise RuntimeError("Client wheel changed during image preparation; run prepare again")
     receipt = {
         "ha_version": args.ha_version,
         "artifact_sha256": digest,
+        "client_wheel_sha256": client_digest,
+        "client_version": client_version,
+        "scope": "local validation candidate; requires the matching local wheel",
         "base_images": {"ha": ha_base, "python": python_base},
         "images": {role: image_id(ref) for role, ref in references.items()},
         "uv_lock_sha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
@@ -230,6 +256,9 @@ def run_lab(args):
     archive_digest = hashlib.sha256((ROOT / "dist/velux_active.zip").read_bytes()).hexdigest()
     if archive_digest != receipt["artifact_sha256"]:
         raise RuntimeError("Release differs from prepared image; run prepare again")
+    _, _, client_digest = client_artifact()
+    if client_digest != receipt["client_wheel_sha256"]:
+        raise RuntimeError("Client wheel differs from prepared image; run prepare again")
     if receipt.get("lab_source_hashes") != lab_source_hashes():
         raise RuntimeError("Lab sources differ from prepared images; run prepare again")
     for image in receipt["images"].values():
@@ -258,6 +287,7 @@ def run_lab(args):
             "LAB_HA_ADDRESS": ha_address,
             "LAB_SCENARIO": args.scenario,
             "LAB_ARTIFACT_SHA256": archive_digest,
+            "LAB_CLIENT_WHEEL_SHA256": client_digest,
             "HA_LAB_IMAGE": receipt["images"]["ha"],
             "SIM_LAB_IMAGE": receipt["images"]["simulator"],
             "RUNNER_LAB_IMAGE": receipt["images"]["runner"],
@@ -276,6 +306,8 @@ def run_lab(args):
         "started_at": started,
         "ha_version": args.ha_version,
         "artifact_sha256": archive_digest,
+        "client_wheel_sha256": client_digest,
+        "scope": receipt["scope"],
         "docker_engine": engine,
         "scenario": args.scenario,
     }

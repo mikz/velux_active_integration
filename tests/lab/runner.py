@@ -347,6 +347,11 @@ class Lab:
                     "ha_version": os.environ["LAB_HA_VERSION"],
                     "scenarios": self.results,
                     "artifact_sha256": os.environ["LAB_ARTIFACT_SHA256"],
+                    "client_wheel_sha256": os.environ["LAB_CLIENT_WHEEL_SHA256"],
+                    "client_proof": json.loads(
+                        await asyncio.to_thread((CONTROL / "client-proof.json").read_text)
+                    ),
+                    "scope": "local validation candidate; requires the matching local wheel",
                     "entities": self.original_ids,
                     "registry_preferences": self.original_preferences,
                     "cloud_counts": (await self.sim())["counts"],

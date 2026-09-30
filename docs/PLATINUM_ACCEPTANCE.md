@@ -67,7 +67,8 @@ There are 54 rules: 20 Bronze, 10 Silver, 21 Gold, 3 Platinum. Existing baseline
 | R1 identity oracle | `test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reauth` checks all 23 original registrations and live states; `test_legacy_identity_oracle_rejects_deliberate_rain_unique_id_mutation` proves a duplicate cannot satisfy the oracle. Lab seeds native version-1 storage before first candidate boot and checks reload, cold restart, reauth, then fresh login. | M0 candidate proof; final artifact revalidation M7 |
 | R1 device logs | `test_device_disconnection_and_recovery_logs_are_deduplicated` and owner independent false/false/true/true probe prove one anonymous INFO transition pair. Omitted known devices need the M3 availability contract. | Explicit disconnection M0 passed; omission open M3 |
 | R1 archive smoke | Frozen ZIP isolated origins and hashes, distributed dependency, no checkout fallback; safe real-cloud status/counts. | OPEN until M7 |
-| Core-ready dependency | Public tagged/license/issues plus published typed distributions and exact installed HA pin. | External/engineering open M2b |
+| Local dependency | Same-repo client, typed wheel/sdist, fresh non-editable installation, exact manifest pin and ZIP/wheel origin/member proof. | Engineering open M2b/M7 |
+| Core-ready public dependency | Public tagged/license/issues plus published typed distributions and ordinary HACS installation. | User-deferred; do not configure/tag/publish |
 | Provider budget/completeness | Cadence caps and failure attempt timestamps, validated atomic account-wide IDs, conservative stale removal. | Open M3 |
 | Final compatibility | Identical tracked-payload ZIP on refreshed HA targets; native legacy/privacy/localization/default/repair/leak scenarios. | Open M7 |
 | Owner/adversarial acceptance | Repeated owner checks and persistent Astra/max review, all findings closed or explicitly external. | Open |
@@ -112,3 +113,26 @@ recovery and no failed-login credential changes. Ruff check/format passed.
 Strict mypy is now enforced in source CI. The M2b distributed dependency and
 M3 protocol/topology gates remain open; installed source bytes have changed
 since the M0 artifact receipt, which is only historical checkpoint evidence.
+
+M2b local extraction checkpoint: the single implementation now lives in
+`packages/velux-active-client`; the integration forwards its typed public API.
+The independently versioned 0.1.0 wheel/sdist builds from the local project.
+Strict mypy passes **12 modules**. Source tests passed **145 tests + 37 subtests**;
+four additional tracked-wheel mutation controls passed separately (nine total
+client-release tests). Ruff check/format passed. Config flow remains 100% and
+all twelve owned modules exceed 95% combined coverage; client coverage is 97.31%.
+The six isolated artifact-smoke tests pass, including editable/source and
+mismatched-wheel negative controls, independently rerun by the owner.
+
+Native HA 2026.9.4 receipt `velux-lab-2026-9-4-d98a6fc6` passed **11/11**
+scenarios, isolation and cleanup with integration ZIP SHA-256
+`3953cc8ad9bf2bb142c33abd50b013d1d35aa7f47ba644680a4db4101a4f83dd`
+and client wheel SHA-256
+`271fecffecfc03f67bb1cd0844e19c10f322aadaaf4cfa89145da7a2e560b20a`.
+The native startup proof checks the exact manifest pin, non-editable installed
+origins, all four client payload member hashes and runtime versions
+(Python3.14.6, aiohttp3.14.3). This is bounded extraction compatibility evidence,
+not the final M7 two-version/frozen-pair or real-cloud proof. Public distribution,
+ordinary HACS installation and Core acceptance remain user-deferred; this local
+candidate requires its matching wheel. No publisher configuration, tags or
+publication occurred. M3 topology and remaining M1/M4–M7 gates remain open.

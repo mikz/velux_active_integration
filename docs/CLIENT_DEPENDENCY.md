@@ -56,3 +56,24 @@ workflow, publication requires an authorized PyPI project/pending publisher for
 this distribution and repository workflow. Until actual distribution is
 available, manifest installation and Core-ready publication remain open; do not
 substitute a fabricated published version or source-only proof.
+
+## Prepared publication contract
+
+The standalone project is under `packages/velux-active-client`, with explicit
+public exports, `py.typed`, MIT license and sdist/wheel build metadata. The
+prepared release workflow is `.github/workflows/client-release.yml`; it accepts
+only `client-v<exact package version>` tags and publishes only `dist/client` to
+PyPI using the intended `pypi` environment and OIDC. The required trusted
+publisher fields are owner `mikz`, repository `velux_active_integration`,
+workflow `client-release.yml`, environment `pypi`, project `velux-active-client`.
+Publisher configuration/access and environment protection have not been verified.
+The metadata links to the actual public source repository; versioned package
+source will be identified by the corresponding reviewed client Git tag.
+
+Freeze and adversarially review the M3 client before tagging/publishing 0.1.0.
+Use Git tags for public versioned client source; **do not create a client GitHub
+Release**, which could become HACS latest. The existing integration release job
+also excludes `client-v*` tags. Package publication does not authorize an
+integration release, merge or production deployment. Never overwrite an already
+published version with changed bytes; verify the downloaded published wheel
+matches the reviewed hash before final packaged HA acceptance.

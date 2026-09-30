@@ -15,8 +15,9 @@ Contributions to this repository use the [MIT license](LICENSE).
 
 ## Runtime architecture and identity
 
-`api.py` is the inline, asynchronous cloud client. It receives Home Assistant's
-shared `aiohttp.ClientSession`; it does not create or close that session. The
+`packages/velux-active-client` owns the asynchronous cloud client; the integration's
+`api.py` forwards its public API for compatibility. The client receives Home
+Assistant's shared `aiohttp.ClientSession` and does not create or close it. The
 client implements bounded HTTP requests, token rotation under an async lock,
 read-only topology/status endpoints, and a monotonic Retry-After deadline.
 `coordinator.py` owns polling and translates authentication failures into
@@ -67,7 +68,7 @@ It covers auth/transient/malformed responses, token concurrency, account renewal
 manual-refresh cancellation, first-refresh failures, missing devices/data,
 timestamps, and outage recovery. `scripts/check_coverage.py` requires 100% line
 and branch coverage of `config_flow.py` and strictly more than 95% combined line
-and branch coverage in **each** integration Python module, including `api.py`.
+and branch coverage in **each** owned integration and client Python module.
 Missing files fail the gate. Do not add coverage exclusions to meet the gate.
 
 The Docker lab checks the deterministic release archive through actual Home
@@ -84,16 +85,28 @@ An exclusive preparation lock rejects overlapping image builds.
 
 ## Dependency and asset provenance
 
-The cloud client source is public in
-[`api.py`](custom_components/velux_active/api.py) under this repository's MIT
-license. It follows the protocol references linked in the README. It imports
-Python standard library code and Home Assistant-provided `aiohttp`; integration
-code also uses Home Assistant and its `voluptuous` dependency. The empty manifest
-`requirements` list means no additional installed runtime package, not a quality
-rule exemption. `uv.lock` pins the development harness and Ruff and their
-transitive dependencies. Simulator/test dependencies are never shipped as part
-of the integration. Client extraction to a PyPI package and Core submission are
-separate work.
+The single cloud-client implementation is in
+[`packages/velux-active-client`](packages/velux-active-client), under this
+repository's MIT license. It follows the protocol references in
+[the dependency assessment](docs/CLIENT_DEPENDENCY.md). Its runtime dependency is
+`aiohttp`; integration code also uses Home Assistant and `voluptuous`. The manifest
+pins the independently versioned client exactly. `uv.lock` pins development tools
+and runtime dependencies for reproducible local validation.
+
+This branch is a local validation candidate requiring the matching local client
+wheel. Public distribution, publisher configuration, tags, and publication are
+pending by user instruction. HACS does not install the sibling package folder;
+green schema validation does not establish ordinary HACS installability. Do not
+release the integration while its pinned client is unpublished.
+
+Run `uv run python scripts/prepare_client_artifacts.py` before the source artifact
+tests or lab preparation. This explicit network preparation builds the local
+sdist/wheel and downloads hashed dependencies into an allowlisted wheelhouse.
+Artifact tests then install non-editably into a fresh interpreter with no index
+or checkout fallback. Lab images preinstall the same local wheel; the native
+startup gate validates the exact manifest pin, installed origins, and member
+hashes. Receipts bind both the integration ZIP and client wheel. Development's
+workspace editable installation is not artifact acceptance evidence.
 
 Local brand assets use original, MIT-licensed community artwork. See
 [asset provenance](assets/README.md) and `scripts/brand.py` for reproducible source.

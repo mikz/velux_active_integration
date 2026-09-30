@@ -1,0 +1,30 @@
+name: Client package release
+on:
+  push:
+    tags: ['client-v*']
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: '3.14.7'
+      - run: uv sync --locked
+      - run: uv run python scripts/prepare_client_artifacts.py
+      - name: Validate the exact package version tag
+        run: uv run python scripts/client_release.py '${{ github.ref_name }}'
+      - run: uv run mypy
+      - run: uv run pytest -q
+      - name: Build typed distributions with locked tooling
+        run: uv run python -m build --no-isolation packages/velux-active-client --outdir dist/client
+      - name: Publish the reviewed distributions through PyPI trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/client

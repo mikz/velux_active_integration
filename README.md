@@ -1,5 +1,13 @@
 # VELUX ACTIVE cloud sensors
 
+The draft Platinum branch uses the separately versioned local project at
+`packages/velux-active-client`. Its prepared 0.1.0 dependency is not published;
+this branch is a development preview and is not a release-installable HACS
+artifact. Development and isolated labs build/install the exact local wheel.
+Publication is deferred by the owner. An integration release requires a
+separately reviewed dependency distribution/installability gate; no production
+deployment or package publication is performed by this work.
+
 This Home Assistant integration reads VELUX ACTIVE account data, including the
 cloud gateway's `is_raining` field. Sign in with the email address and password
 used by the VELUX ACTIVE app.

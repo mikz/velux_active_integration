@@ -1,6 +1,6 @@
-"""Compatibility imports for the separately versioned local read-only client."""
+"""Typed read-only VELUX ACTIVE cloud protocol; caller owns the aiohttp session."""
 
-from velux_active_client import (
+from .client import (
     APIConnectionError,
     AuthToken,
     InvalidAuthError,

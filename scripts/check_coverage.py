@@ -14,7 +14,15 @@ def validate(report, root: Path) -> list[str]:
         return ["Branch coverage was not measured"]
     files = report["files"]
     failures = []
-    for source in sorted((root / "custom_components/velux_active").rglob("*.py")):
+    sources = [
+        source
+        for directory in (
+            root / "custom_components/velux_active",
+            root / "packages/velux-active-client/src/velux_active_client",
+        )
+        for source in directory.rglob("*.py")
+    ]
+    for source in sorted(sources):
         relative = source.relative_to(root).as_posix()
         if relative not in files:
             failures.append(f"{relative}: absent from coverage")

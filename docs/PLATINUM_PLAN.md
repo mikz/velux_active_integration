@@ -88,6 +88,19 @@ is an intermediate milestone, not the final Core-ready dependency.
 
 ### M2b: proven distributed client and Core proposal
 
+**Owner steering, 2026-10-01:** keep the client in the local folder
+`packages/velux-active-client`. Publication, publisher/environment configuration,
+Git tags and releases are deferred by the user; do not ask again or perform them.
+Complete all local engineering and adversarial gates using an independently
+built, non-editably installed exact wheel. Final labs and real-cloud smoke freeze
+and verify the same **ZIP + local wheel** pair with origin/member hashes, versions
+and manifest pin satisfaction. No repository/PYTHONPATH/editable fallback, local
+absolute manifest path, custom runtime installer or hidden public fallback.
+Label the branch, PR and receipts as a local validation candidate requiring the
+matching wheel. Ordinary HACS installation/public distribution/Core recognition
+remain user-deferred gates; they are neither exemptions nor completed work.
+The following public-distribution requirements remain the later Core-ready path.
+
 Compare published external clients against current VELUX app username/password
 auth, refresh rotation, rain, sparse status, topology, typing, session and retry
 semantics. Leads include current pyatmo releases and ha-velux-active; do not decide

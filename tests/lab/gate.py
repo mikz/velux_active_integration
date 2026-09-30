@@ -1,8 +1,11 @@
 """Hold application startup until host inspection proves the private network."""
 
 import hashlib
+import importlib
+import importlib.metadata
 import json
 import os
+import platform
 import shutil
 import sys
 import time
@@ -22,6 +25,21 @@ def main():
     if gate.read_text().strip() != os.environ["LAB_RUN_ID"]:
         raise SystemExit("Isolation gate belongs to a different run")
     if role == "ha":
+        from cloud_smoke import verify_dependency
+
+        importlib.import_module("velux_active_client")
+        manifest = json.loads(Path("/opt/velux-active/integration/manifest.json").read_text())
+        wheels = list(Path("/opt/velux-active").glob("*.whl"))
+        if len(wheels) != 1:
+            raise SystemExit("Lab requires exactly one frozen client wheel")
+        proof = verify_dependency(wheels[0], manifest["requirements"])
+        proof.update(
+            python_version=platform.python_version(),
+            aiohttp_version=importlib.metadata.version("aiohttp"),
+            homeassistant_version=importlib.metadata.version("homeassistant"),
+            scope="local validation candidate; requires the matching local wheel",
+        )
+        (Path("/control") / "client-proof.json").write_text(json.dumps(proof))
         config = Path("/config")
         config.mkdir(exist_ok=True)
         archive = Path("/opt/velux-active/velux_active.zip")

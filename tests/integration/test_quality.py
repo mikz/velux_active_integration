@@ -95,7 +95,7 @@ async def test_action_failure_backoff_and_automatic_recovery(hass, loaded, failu
             await refresh(hass)
         assert simulator.counts["homestatus"] == 2
         # Advance the cloud deadline without delaying the test or changing HA internals.
-        with patch("custom_components.velux_active.api.monotonic", return_value=api._retry_at + 1):
+        with patch("velux_active_client.client.monotonic", return_value=api._retry_at + 1):
             async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=2))
             await hass.async_block_till_done(wait_background_tasks=True)
     else:

@@ -15,9 +15,11 @@ import json
 import logging
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import types
 import zipfile
+from email.parser import BytesParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -65,6 +67,55 @@ def load_archive_api(root: Path, members: dict[str, str]):
     return api, origins
 
 
+def verify_dependency(wheel: Path, requirements: list[str]) -> dict:
+    """Require installed wheel bytes; an editable checkout cannot satisfy this proof."""
+    distribution = importlib.metadata.distribution("velux-active-client")
+    direct_url = json.loads(distribution.read_text("direct_url.json") or "{}")
+    if direct_url.get("dir_info", {}).get("editable"):
+        raise ValueError("Editable source is not an installed artifact")
+    if requirements != [f"velux-active-client=={distribution.version}"]:
+        raise ValueError("Dependency version does not match the archive requirement")
+    installed = Path(distribution.locate_file("velux_active_client")).resolve()
+    install_roots = {Path(sysconfig.get_path(key)).resolve() for key in ("purelib", "platlib")}
+    if not any(installed.is_relative_to(root) for root in install_roots):
+        raise ValueError("Dependency origin is outside the prepared interpreter install roots")
+    modules = {}
+    member_hashes = {}
+    with zipfile.ZipFile(wheel) as package:
+        metadata_files = [
+            name for name in package.namelist() if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_files) != 1:
+            raise ValueError("Wheel metadata is not unique")
+        metadata = BytesParser().parsebytes(package.read(metadata_files[0]))
+        if metadata["Version"] != distribution.version or metadata["Name"] != "velux-active-client":
+            raise ValueError("Supplied wheel metadata does not match installed dependency")
+        for member in package.namelist():
+            if member.startswith("velux_active_client/") and not member.endswith("/"):
+                relative = Path(member).relative_to("velux_active_client")
+                digest = hashlib.sha256(package.read(member)).hexdigest()
+                if hashlib.sha256((installed / relative).read_bytes()).hexdigest() != digest:
+                    raise ValueError("Installed dependency member differs from the wheel")
+                member_hashes[member] = digest
+        for name, module in tuple(sys.modules.items()):
+            if name == "velux_active_client" or name.startswith("velux_active_client."):
+                origin = Path(module.__file__).resolve()
+                member = "velux_active_client/" + origin.relative_to(installed).as_posix()
+                digest = hashlib.sha256(origin.read_bytes()).hexdigest()
+                if digest != hashlib.sha256(package.read(member)).hexdigest():
+                    raise ValueError("Installed dependency differs from the supplied wheel")
+                modules[name] = {"member": member, "sha256": digest}
+        if not modules or not (installed / "py.typed").is_file():
+            raise ValueError("Typed installed dependency proof is missing")
+    return {
+        "name": "velux-active-client",
+        "version": distribution.version,
+        "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+        "modules": modules,
+        "member_hashes": member_hashes,
+    }
+
+
 async def check(api_module, credentials: dict, base_url: str | None) -> dict:
     import aiohttp
 
@@ -98,9 +149,12 @@ def child(args) -> dict:
         root = Path(temporary).resolve()
         members = extract_verified(args.archive, root)
         manifest = json.loads((root / "manifest.json").read_text())
-        if manifest["requirements"]:
-            raise ValueError("Distributed dependency proof is not prepared yet")
         api, origins = load_archive_api(root, members)
+        dependency = None
+        if manifest["requirements"]:
+            if args.dependency_wheel is None:
+                raise ValueError("An exact installed dependency wheel is required")
+            dependency = verify_dependency(args.dependency_wheel, manifest["requirements"])
         credentials = json.loads(args.credentials.read_text())
         report = asyncio.run(check(api, credentials, args.synthetic_url))
         report.update(
@@ -109,7 +163,7 @@ def child(args) -> dict:
             integration_version=manifest["version"],
             isolated=sys.flags.isolated == 1,
             artifact_modules=origins,
-            dependency_proof="inline_client_intermediate",
+            dependency_proof=dependency or "inline_client_intermediate",
             aiohttp_version=importlib.metadata.version("aiohttp"),
         )
         return report
@@ -119,6 +173,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--credentials", type=Path, required=True)
+    parser.add_argument("--dependency-wheel", type=Path)
+    parser.add_argument(
+        "--python", type=Path, help="Prepared clean interpreter with the exact wheel"
+    )
     parser.add_argument("--synthetic-url", help="Synthetic tests only: loopback HTTP endpoint")
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -136,7 +194,7 @@ def main() -> int:
         print(json.dumps(report, sort_keys=True))
         return 0 if report["status"] == "passed" else 1
     command = [
-        sys.executable,
+        str(args.python.absolute()) if args.python else sys.executable,
         "-I",
         str(Path(__file__).resolve()),
         "--child",
@@ -147,6 +205,8 @@ def main() -> int:
     ]
     if args.synthetic_url:
         command.extend(["--synthetic-url", args.synthetic_url])
+    if args.dependency_wheel:
+        command.extend(["--dependency-wheel", str(args.dependency_wheel.resolve())])
     with tempfile.TemporaryDirectory() as temporary:
         result = subprocess.run(
             command, cwd=temporary, capture_output=True, text=True, timeout=180, check=False
