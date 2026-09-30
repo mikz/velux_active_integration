@@ -10,13 +10,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "custom_components/velux_active"
 ARCHIVE = ROOT / "dist/velux_active.zip"
+PAYLOAD_SUFFIXES = {".py", ".json", ".yaml", ".png"}
 
 
 def files():
     return {
         str(p.relative_to(SOURCE)): p.read_bytes()
         for p in sorted(SOURCE.rglob("*"))
-        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+        if p.is_file()
+        and p.suffix in PAYLOAD_SUFFIXES
+        and "__pycache__" not in p.relative_to(SOURCE).parts
+        and not any(part.startswith(".") for part in p.relative_to(SOURCE).parts)
     }
 
 

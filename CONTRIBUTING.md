@@ -98,7 +98,16 @@ by this minimum.
 2. Review all 30 local Bronze/Silver ledger rules and their evidence. Keep Custom
    status; do not set `manifest.quality_scale` to an official tier.
 3. Run hassfest and HACS validation without ignoring brands.
-4. Run `scripts/release.py build`, then `verify`. Prepare and test that exact ZIP
+4. Check the payload inventory against the intended tracked integration files.
+   The package contract includes visible Python (`.py`), JSON (`.json`), YAML
+   (`.yaml`), and PNG (`.png`) files, including nested modules, translations, and
+   brand assets. It excludes hidden files/directories, `__pycache__`, bytecode,
+   and files with other suffixes, such as editor/runtime debris. Add and review
+   new payload types explicitly. A builder and verifier sharing a broad glob can
+   agree on shipping junk; their agreement alone does not prove a clean package.
+   The source test compares package members with the tracked integration inventory
+   independently and proves verification rejects extra archive members.
+   Run `scripts/release.py build`, then `verify`. Prepare and test that exact ZIP
    on both target HA versions. Preserve the archive SHA-256 and sanitized receipts.
 5. If authorized, run the separate read-only real-cloud smoke check. A simulated
    pass does not establish real-cloud access or rain freshness.
