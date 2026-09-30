@@ -142,3 +142,28 @@ async def test_native_user_flow_distinguishes_authentication_from_outage(hass, c
         assert result["type"] == "create_entry"
         await hass.async_block_till_done()
         assert await hass.config_entries.async_unload(result["result"].entry_id)
+
+
+@pytest.mark.parametrize("lifetime", [float("inf"), float("nan"), 10**30])
+async def test_invalid_token_lifetime_native_login_fails_safely_and_recovers(hass, cloud, lifetime):
+    simulator, api = cloud
+    with (
+        patch("custom_components.velux_active.config_flow.VeluxActiveAPI", return_value=api),
+        patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api),
+    ):
+        flow = await hass.config_entries.flow.async_init("velux_active", context={"source": "user"})
+        simulator.state["token_lifetime"] = lifetime
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"username": USERNAME, "password": PASSWORD}
+        )
+        assert result["errors"] == {"base": "cannot_connect"}
+        assert api.auth_token is None
+        assert api._credentials is None
+        assert hass.config_entries.async_entries("velux_active") == []
+        simulator.state["token_lifetime"] = 10800
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], {"username": USERNAME, "password": PASSWORD}
+        )
+        assert result["type"] == "create_entry"
+        await hass.async_block_till_done()
+        assert await hass.config_entries.async_unload(result["result"].entry_id)

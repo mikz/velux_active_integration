@@ -7,16 +7,19 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
-from .coordinator import VeluxActiveConfigEntry
+from .api import VeluxDevice, VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
+) -> bool:
     """Set up Velux Active binary sensors from a config entry."""
     coordinator = entry.runtime_data
     binary_sensors = []
@@ -36,7 +39,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, 
     return True
 
 
-def create_gateway_binary_sensors(coordinator, device):
+def create_gateway_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxGatewayData
+) -> list[VeluxBinarySensor]:
     """Create binary sensors for Velux Gateway."""
     sensors = []
     # Sensor for is_raining
@@ -92,7 +97,9 @@ def create_gateway_binary_sensors(coordinator, device):
     return sensors
 
 
-def create_cover_binary_sensors(coordinator, device):
+def create_cover_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxWindowData | VeluxShutterData
+) -> list[VeluxBinarySensor]:
     """Create binary sensors for Velux Window or Shutter."""
     sensors = []
     # Sensor for reachable
@@ -118,7 +125,9 @@ def create_cover_binary_sensors(coordinator, device):
     return sensors
 
 
-def create_switch_binary_sensors(coordinator, device):
+def create_switch_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxSwitchData
+) -> list[VeluxBinarySensor]:
     """Create binary sensors for Velux Switch."""
     sensors = []
     # Sensor for reachable
@@ -134,17 +143,17 @@ def create_switch_binary_sensors(coordinator, device):
     return sensors
 
 
-class VeluxBinarySensor(VeluxEntity, BinarySensorEntity):
+class VeluxBinarySensor(VeluxEntity[VeluxDevice], BinarySensorEntity):
     """Representation of a Velux binary sensor."""
 
     def __init__(
         self,
-        coordinator,
-        device,
-        name,
-        attribute,
-        device_class=None,
-    ):
+        coordinator: VeluxCoordinator,
+        device: VeluxDevice,
+        name: str,
+        attribute: str,
+        device_class: BinarySensorDeviceClass | None = None,
+    ) -> None:
         """Initialize the binary sensor."""
         super().__init__(coordinator, device)
         self._attr_unique_id = f"{device.id}_{attribute}"
@@ -153,16 +162,16 @@ class VeluxBinarySensor(VeluxEntity, BinarySensorEntity):
         self._attr_device_class = device_class
 
     @property
-    def is_on(self):
+    def is_on(self) -> bool | None:
         """Return True if the binary sensor is on."""
         device = self.device
         if device:
-            value = getattr(device, self._attribute, None)
-            return value
+            value: object = getattr(device, self._attribute, None)
+            return value if isinstance(value, bool) else None
         return None
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, int | None]:
         """Return additional state attributes."""
         device = self.device
         if device:
@@ -170,7 +179,7 @@ class VeluxBinarySensor(VeluxEntity, BinarySensorEntity):
         return {}
 
     @property
-    def available(self):
+    def available(self) -> bool:
         """Connectivity stays available to report a disconnected device."""
         if self._attribute == "reachable":
             return self.coordinator.last_update_success and self.device is not None

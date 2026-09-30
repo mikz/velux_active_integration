@@ -7,7 +7,9 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.typing import ConfigType
 
+from .api import VeluxGatewayData, VeluxShutterData, VeluxWindowData
 from .const import DOMAIN
 from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 
@@ -15,7 +17,7 @@ PLATFORMS = [Platform.COVER, Platform.SENSOR, Platform.BINARY_SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the zero-argument action independently of entry loading."""
 
     async def async_handle_refresh(call: ServiceCall) -> None:
@@ -41,19 +43,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry) 
     entry.runtime_data = coordinator
     registry = dr.async_get(hass)
     devices = [device for home in coordinator.data.values() for device in home["devices"]]
-    gateways = {}
+    gateways: dict[str, str] = {}
     for device in sorted(devices, key=lambda device: device.type != "NXG"):
-        model = getattr(device, "velux_type", device.type)
-        info = {
-            "identifiers": {(DOMAIN, device.id)},
-            "name": getattr(device, "name", None) or f"{model.capitalize()} {device.id[-4:]}",
-            "manufacturer": getattr(device, "manufacturer", None) or "Velux",
-            "model": model,
-        }
-        bridge = getattr(device, "bridge", None)
-        if bridge in gateways:
-            info["via_device_id"] = gateways[bridge]
-        registered = registry.async_get_or_create(config_entry_id=entry.entry_id, **info)
+        cover = device if isinstance(device, (VeluxWindowData, VeluxShutterData)) else None
+        model = (cover.velux_type if cover else None) or device.type
+        name = device.name if isinstance(device, VeluxGatewayData) else None
+        bridge = None if isinstance(device, VeluxGatewayData) else device.bridge
+        registered = registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, device.id)},
+            name=name or f"{model.capitalize()} {device.id[-4:]}",
+            manufacturer=(cover.manufacturer if cover else None) or "Velux",
+            model=model,
+            via_device_id=gateways.get(bridge) if bridge is not None else None,
+        )
         if device.type == "NXG":
             gateways[device.id] = registered.id
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

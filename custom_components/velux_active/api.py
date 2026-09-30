@@ -1,14 +1,74 @@
 """Read-only client for the VELUX ACTIVE cloud API."""
 
+from __future__ import annotations
+
 import asyncio
-from dataclasses import dataclass, fields
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import isfinite
 from time import monotonic
-from typing import Any
+from typing import cast
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from .const import API_URL, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET
+
+type JSON = None | bool | int | float | str | list[JSON] | dict[str, JSON]
+
+
+def object_value(value: JSON) -> dict[str, JSON]:
+    if not isinstance(value, dict):
+        raise TypeError("Expected object")
+    return value
+
+
+def array_value(value: JSON) -> list[JSON]:
+    if not isinstance(value, list):
+        raise TypeError("Expected array")
+    return value
+
+
+def required_text(value: JSON) -> str:
+    if not isinstance(value, str) or not value:
+        raise TypeError("Expected nonempty string")
+    return value
+
+
+def optional_text(value: JSON) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    raise APIConnectionError("VELUX returned an invalid text measurement")
+
+
+def optional_integer(value: JSON) -> int | None:
+    if value is None or (isinstance(value, int) and not isinstance(value, bool)):
+        return value
+    raise APIConnectionError("VELUX returned an invalid integer measurement")
+
+
+def optional_boolean(value: JSON) -> bool | None:
+    if value is None or isinstance(value, bool):
+        return value
+    raise APIConnectionError("VELUX returned an invalid boolean measurement")
+
+
+def optional_version(value: JSON) -> str | int | None:
+    """Provider revisions occur as both numeric revisions and text versions."""
+    if (
+        value is None
+        or isinstance(value, str)
+        or (isinstance(value, int) and not isinstance(value, bool))
+    ):
+        return value
+    raise APIConnectionError("VELUX returned an invalid version measurement")
+
+
+def optional_pairing(value: JSON) -> str | bool | None:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    raise APIConnectionError("VELUX returned an invalid pairing measurement")
+
 
 BOOLEAN_FIELDS = frozenset(
     {
@@ -25,7 +85,7 @@ BOOLEAN_FIELDS = frozenset(
 )
 
 
-def validate_boolean_fields(record: dict) -> None:
+def validate_boolean_fields(record: Mapping[str, JSON]) -> None:
     """Missing/null is unknown; supplied boolean values must actually be booleans."""
     for key in BOOLEAN_FIELDS:
         if (value := record.get(key)) is not None and not isinstance(value, bool):
@@ -51,7 +111,9 @@ class RateLimitError(APIConnectionError):
 class AuthToken:
     """A token whose representation never contains credentials."""
 
-    def __init__(self, access_token: str, refresh_token: str, expires_in: int, **rest):
+    def __init__(
+        self, access_token: str, refresh_token: str, expires_in: int, **rest: object
+    ) -> None:
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.expires_in = timedelta(seconds=expires_in)
@@ -76,32 +138,26 @@ class VeluxHome:
 class VeluxModule:
     """A status record with the static metadata supplied by homesdata."""
 
-    def __init__(self, home: VeluxHome, id: str, type: str, **kwargs):
+    def __init__(self, home: VeluxHome, id: str, type: str, **kwargs: JSON) -> None:
         self.home, self.id, self.type = home, id, type
         self.kwargs = kwargs
-
-    def __getitem__(self, key):
-        if key in {"home", "id", "type"}:
-            return getattr(self, key)
-        return self.kwargs[key]
-
-    def keys(self):
-        return ["home", "id", "type", *self.kwargs]
 
 
 class VeluxActiveAPI:
     """Authenticate and poll without sending device commands."""
 
-    def __init__(self, websession: ClientSession, *, base_url: str = API_URL):
+    def __init__(self, websession: ClientSession, *, base_url: str = API_URL) -> None:
         self._websession = websession
         self._base_url = base_url.rstrip("/")
         self.auth_token: AuthToken | None = None
         self._credentials: tuple[str, str] | None = None
         self._token_lock = asyncio.Lock()
         self._retry_at = 0.0
-        self._topology: dict[str, dict[str, dict[str, Any]]] = {}
+        self._topology: dict[str, dict[str, dict[str, JSON]]] = {}
 
-    async def _request(self, path, *, data=None, token=None):
+    async def _request(
+        self, path: str, *, data: dict[str, str] | None = None, token: str | None = None
+    ) -> dict[str, JSON]:
         if monotonic() < self._retry_at:
             raise RateLimitError(max(1, int(self._retry_at - monotonic()) + 1))
         headers = {"Authorization": f"Bearer {token}"} if token else {}
@@ -114,7 +170,8 @@ class VeluxActiveAPI:
                 timeout=ClientTimeout(total=20),
             ) as response:
                 try:
-                    payload = await response.json(content_type=None)
+                    # aiohttp uses the JSON decoder: its values have this recursive shape.
+                    payload = cast(JSON, await response.json(content_type=None))
                 except ValueError:
                     payload = None
                 error = payload.get("error") if isinstance(payload, dict) else None
@@ -141,7 +198,7 @@ class VeluxActiveAPI:
         except (ClientError, TimeoutError) as err:
             raise APIConnectionError("Cannot reach the VELUX cloud API") from err
 
-    async def _token_request(self, data):
+    async def _token_request(self, data: dict[str, str]) -> AuthToken:
         payload = await self._request(
             "/oauth2/token",
             data={
@@ -152,7 +209,12 @@ class VeluxActiveAPI:
             },
         )
         try:
-            lifetime = int(payload.get("expires_in", payload.get("expire_in", 10800)))
+            raw_lifetime = payload.get("expires_in", payload.get("expire_in", 10800))
+            if not isinstance(raw_lifetime, (int, float, str)) or isinstance(raw_lifetime, bool):
+                raise TypeError
+            if isinstance(raw_lifetime, float) and not isfinite(raw_lifetime):
+                raise ValueError
+            lifetime = int(raw_lifetime)
             access, refresh = payload["access_token"], payload["refresh_token"]
             if (
                 not isinstance(access, str)
@@ -164,7 +226,7 @@ class VeluxActiveAPI:
             if lifetime <= 0:
                 raise ValueError
             return AuthToken(access, refresh, lifetime)
-        except (KeyError, ValueError, TypeError) as err:
+        except (KeyError, ValueError, TypeError, OverflowError) as err:
             raise APIConnectionError("VELUX returned an invalid token response") from err
 
     async def authenticate(self, username: str, password: str) -> AuthToken:
@@ -202,10 +264,10 @@ class VeluxActiveAPI:
                     pass
             if self._credentials is None:
                 raise InvalidAuthError("VELUX login is required")
-            await self.authenticate(*self._credentials)
-            return self.auth_token.access_token
+            token = await self.authenticate(*self._credentials)
+            return token.access_token
 
-    async def _api_request(self, path, data=None):
+    async def _api_request(self, path: str, data: dict[str, str] | None = None) -> dict[str, JSON]:
         # Retry a rejected access token once. Network errors never trigger a login.
         token = await self.access_token
         try:
@@ -218,17 +280,20 @@ class VeluxActiveAPI:
     async def get_home_data(self) -> list[VeluxHome]:
         payload = await self._api_request("/api/homesdata")
         try:
-            homes = payload["body"]["homes"]
+            homes = array_value(object_value(payload["body"])["homes"])
             if not isinstance(homes, list):
                 raise TypeError
             result = []
-            for home in homes:
-                home_id = home["id"]
-                modules = home.get("modules", [])
+            for raw_home in homes:
+                home = object_value(raw_home)
+                home_id = required_text(home["id"])
+                modules = array_value(home.get("modules", []))
                 if not isinstance(modules, list):
                     raise TypeError
-                self._topology[home_id] = {m["id"]: m for m in modules}
-                result.append(VeluxHome(home_id, home.get("name", "Home")))
+                self._topology[home_id] = {
+                    required_text(object_value(m)["id"]): object_value(m) for m in modules
+                }
+                result.append(VeluxHome(home_id, required_text(home.get("name", "Home"))))
             return result
         except (KeyError, TypeError, AttributeError) as err:
             raise APIConnectionError("VELUX returned invalid home topology") from err
@@ -236,14 +301,15 @@ class VeluxActiveAPI:
     async def get_home_statuses(self, home: VeluxHome) -> list[VeluxModule]:
         payload = await self._api_request("/api/homestatus", {"home_id": home.id})
         try:
-            records = payload["body"]["home"]["modules"]
+            records = array_value(object_value(object_value(payload["body"])["home"])["modules"])
             if not isinstance(records, list):
                 raise TypeError
             modules = []
-            for record in records:
+            for raw_record in records:
+                record = object_value(raw_record)
                 validate_boolean_fields(record)
                 # Never retain a previous rain/position/reachability measurement.
-                topology = self._topology.get(home.id, {}).get(record["id"], {})
+                topology = self._topology.get(home.id, {}).get(required_text(record["id"]), {})
                 metadata = {
                     k: v
                     for k, v in topology.items()
@@ -261,26 +327,97 @@ class VeluxActiveAPI:
                         "hardware_version",
                     }
                 }
-                modules.append(VeluxModule(home, **(metadata | record)))
+                merged = metadata | record
+                module_id, module_type = (
+                    required_text(merged.pop("id")),
+                    required_text(merged.pop("type")),
+                )
+                modules.append(VeluxModule(home, module_id, module_type, **merged))
             return modules
         except (KeyError, TypeError, AttributeError) as err:
             raise APIConnectionError("VELUX returned invalid home status") from err
 
 
-def device_from_module(module: VeluxModule):
-    """Ignore new API fields and preserve absent measurements as unknown."""
-    model = {"NXG": VeluxGatewayData, "NXS": VeluxSwitchData, "NXD": VeluxSwitchData}.get(
-        module.type
-    )
-    if module.type == "NXO":
-        model = {"window": VeluxWindowData, "shutter": VeluxShutterData}.get(
-            module.kwargs.get("velux_type")
+def device_from_module(module: VeluxModule) -> VeluxDevice | None:
+    """Validate owned measurements and ignore unknown API fields."""
+    if module.type == "NXG":
+        return VeluxGatewayData(
+            home=module.home,
+            busy=optional_boolean(module.kwargs.get("busy")),
+            calibrating=optional_boolean(module.kwargs.get("calibrating")),
+            firmware_revision_netatmo=optional_integer(
+                module.kwargs.get("firmware_revision_netatmo")
+            ),
+            firmware_revision_thirdparty=optional_version(
+                module.kwargs.get("firmware_revision_thirdparty")
+            ),
+            hardware_version=optional_integer(module.kwargs.get("hardware_version")),
+            id=module.id,
+            is_raining=optional_boolean(module.kwargs.get("is_raining")),
+            last_seen=optional_integer(module.kwargs.get("last_seen")),
+            locked=optional_boolean(module.kwargs.get("locked")),
+            locking=optional_boolean(module.kwargs.get("locking")),
+            name=optional_text(module.kwargs.get("name")),
+            pairing=optional_pairing(module.kwargs.get("pairing")),
+            secure=optional_boolean(module.kwargs.get("secure")),
+            type=module.type,
+            wifi_strength=optional_integer(module.kwargs.get("wifi_strength")),
+            wifi_state=optional_text(module.kwargs.get("wifi_state")),
+            outdated_weather_forecast=optional_boolean(
+                module.kwargs.get("outdated_weather_forecast")
+            ),
+            reachable=optional_boolean(module.kwargs.get("reachable")),
         )
-    if model is None:
-        return None
-    validate_boolean_fields(module.kwargs)
-    names = {field.name for field in fields(model)}
-    return model(**{key: module[key] for key in module.keys() if key in names})
+    if module.type in {"NXS", "NXD"}:
+        return VeluxSwitchData(
+            home=module.home,
+            battery_level=optional_integer(module.kwargs.get("battery_level")),
+            battery_percent=optional_integer(module.kwargs.get("battery_percent")),
+            firmware_revision=optional_integer(module.kwargs.get("firmware_revision")),
+            id=module.id,
+            last_seen=optional_integer(module.kwargs.get("last_seen")),
+            reachable=optional_boolean(module.kwargs.get("reachable")),
+            rf_strength=optional_integer(module.kwargs.get("rf_strength")),
+            type=module.type,
+            bridge=optional_text(module.kwargs.get("bridge")),
+            battery_state=optional_text(module.kwargs.get("battery_state")),
+            rf_state=optional_text(module.kwargs.get("rf_state")),
+        )
+    if module.type == "NXO" and module.kwargs.get("velux_type") == "window":
+        return VeluxWindowData(
+            home=module.home,
+            current_position=optional_integer(module.kwargs.get("current_position")),
+            firmware_revision=optional_integer(module.kwargs.get("firmware_revision")),
+            id=module.id,
+            last_seen=optional_integer(module.kwargs.get("last_seen")),
+            manufacturer=optional_text(module.kwargs.get("manufacturer")),
+            mode=optional_text(module.kwargs.get("mode")),
+            reachable=optional_boolean(module.kwargs.get("reachable")),
+            silent=optional_boolean(module.kwargs.get("silent")),
+            target_position=optional_integer(module.kwargs.get("target_position")),
+            type=module.type,
+            velux_type=optional_text(module.kwargs.get("velux_type")),
+            bridge=optional_text(module.kwargs.get("bridge")),
+            rain_position=optional_integer(module.kwargs.get("rain_position")),
+            secure_position=optional_integer(module.kwargs.get("secure_position")),
+        )
+    if module.type == "NXO" and module.kwargs.get("velux_type") == "shutter":
+        return VeluxShutterData(
+            home=module.home,
+            current_position=optional_integer(module.kwargs.get("current_position")),
+            firmware_revision=optional_integer(module.kwargs.get("firmware_revision")),
+            id=module.id,
+            last_seen=optional_integer(module.kwargs.get("last_seen")),
+            manufacturer=optional_text(module.kwargs.get("manufacturer")),
+            mode=optional_text(module.kwargs.get("mode")),
+            reachable=optional_boolean(module.kwargs.get("reachable")),
+            silent=optional_boolean(module.kwargs.get("silent")),
+            target_position=optional_integer(module.kwargs.get("target_position")),
+            type=module.type,
+            velux_type=optional_text(module.kwargs.get("velux_type")),
+            bridge=optional_text(module.kwargs.get("bridge")),
+        )
+    return None
 
 
 @dataclass(kw_only=True)
@@ -289,7 +426,7 @@ class VeluxGatewayData:
     busy: bool | None = None
     calibrating: bool | None = None
     firmware_revision_netatmo: int | None = None
-    firmware_revision_thirdparty: str | None = None
+    firmware_revision_thirdparty: str | int | None = None
     hardware_version: int | None = None
     id: str
     is_raining: bool | None = None
@@ -297,7 +434,7 @@ class VeluxGatewayData:
     locked: bool | None = None
     locking: bool | None = None
     name: str | None = None
-    pairing: str | None = None
+    pairing: str | bool | None = None
     secure: bool | None = None
     type: str
     wifi_strength: int | None = None
@@ -306,7 +443,7 @@ class VeluxGatewayData:
     reachable: bool | None = None
 
     @property
-    def unlocked(self) -> bool:
+    def unlocked(self) -> bool | None:
         return None if self.locked is None else not self.locked
 
 
@@ -360,3 +497,6 @@ class VeluxSwitchData:
     bridge: str | None = None
     battery_state: str | None = None
     rf_state: str | None = None
+
+
+type VeluxDevice = VeluxGatewayData | VeluxWindowData | VeluxShutterData | VeluxSwitchData

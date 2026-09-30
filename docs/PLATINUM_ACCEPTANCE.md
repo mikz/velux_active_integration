@@ -91,3 +91,24 @@ two preparation phases mixed shared certificate inputs; the preparation lock
 now rejects that overlap. It was not an integration compatibility failure.
 Receipts remain outside installed payload. These are candidate checkpoint
 results, not final Platinum/Core certification or M7 acceptance.
+
+M2 inline-client checkpoint (before standalone extraction): locked mypy 2.3.1
+strict mode passes all nine owned integration modules, with no blanket excludes,
+ignored imports, or owned `Any` annotations. The external JSON decoder is cast
+only to its recursive JSON value contract; collection/identity/measurement
+validation narrows values before constructing explicit typed models. Native
+ConfigEntry runtime, coordinator snapshots/manual outcomes, entity device types,
+HA callbacks/device info and cover feature flags are typed.
+`test_strict_types_accept_runtime_contract_and_reject_wrong_owner_and_device`
+proves valid consumers pass and wrong runtime ownership/device arguments fail.
+The source run passed **137 tests + 37 subtests**; the new type probe passed
+separately. Config flow is **100%** and every module exceeds **95%** combined
+line/branch coverage (minimum setup module96.43%; inline client97.31%).
+`test_invalid_typed_measurements_reject_http_snapshot` and
+`test_invalid_home_identity_rejects_http_topology` cover malformed HTTP data.
+`test_invalid_token_lifetime_native_login_fails_safely_and_recovers` closes the
+owner's infinite/NaN/unrepresentable token lifetime finding with native flow
+recovery and no failed-login credential changes. Ruff check/format passed.
+Strict mypy is now enforced in source CI. The M2b distributed dependency and
+M3 protocol/topology gates remain open; installed source bytes have changed
+since the M0 artifact receipt, which is only historical checkpoint evidence.

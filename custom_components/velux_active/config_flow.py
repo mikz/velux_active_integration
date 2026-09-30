@@ -1,12 +1,13 @@
 """Configure an account or renew its password without changing account identity."""
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import aiohttp_client, selector
 
 from .api import APIConnectionError, InvalidAuthError, VeluxActiveAPI
 from .const import DOMAIN
+from .coordinator import VeluxActiveConfigEntry
 
 
 class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -14,7 +15,12 @@ class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def _form(self, step_id, user_input, entry=None):
+    async def _form(
+        self,
+        step_id: str,
+        user_input: dict[str, str] | None,
+        entry: VeluxActiveConfigEntry | None = None,
+    ) -> ConfigFlowResult:
         errors = {}
         if user_input is not None:
             if entry is not None and user_input[CONF_USERNAME] != entry.data[CONF_USERNAME]:
@@ -50,14 +56,18 @@ class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_user(self, user_input: dict[str, str] | None = None) -> ConfigFlowResult:
         return await self._form("user", user_input)
 
-    async def async_step_reauth(self, entry_data):
+    async def async_step_reauth(self, entry_data: dict[str, str]) -> ConfigFlowResult:
         return await self.async_step_reauth_confirm()
 
-    async def async_step_reauth_confirm(self, user_input=None):
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
         return await self._form("reauth_confirm", user_input, self._get_reauth_entry())
 
-    async def async_step_reconfigure(self, user_input=None):
+    async def async_step_reconfigure(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
         return await self._form("reconfigure", user_input, self._get_reconfigure_entry())

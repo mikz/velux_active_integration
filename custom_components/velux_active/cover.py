@@ -2,18 +2,21 @@
 
 import logging
 
-from homeassistant.components.cover import CoverDeviceClass, CoverEntity
+from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverEntityFeature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import VeluxShutterData, VeluxWindowData
-from .coordinator import VeluxActiveConfigEntry
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
+) -> bool:
     """Set up Velux Active covers from a config entry."""
     coordinator = entry.runtime_data
     covers = []
@@ -31,10 +34,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, 
     return True
 
 
-class VeluxCover(VeluxEntity, CoverEntity):
+class VeluxCover(VeluxEntity[VeluxWindowData | VeluxShutterData], CoverEntity):
     """Representation of a Velux cover (window or shutter)."""
 
-    def __init__(self, coordinator, device, is_window):
+    def __init__(
+        self,
+        coordinator: VeluxCoordinator,
+        device: VeluxWindowData | VeluxShutterData,
+        is_window: bool,
+    ) -> None:
         """Initialize the cover."""
         super().__init__(coordinator, device)
         self._is_window = is_window
@@ -49,12 +57,12 @@ class VeluxCover(VeluxEntity, CoverEntity):
         # Since the cover is read-only, we don't implement any control methods
 
     @property
-    def supported_features(self) -> int:
+    def supported_features(self) -> CoverEntityFeature:
         """Flag supported features."""
-        return 0
+        return CoverEntityFeature(0)
 
     @property
-    def is_closed(self):
+    def is_closed(self) -> bool | None:
         """Return True if the cover is closed."""
         device = self.device
         if device and device.current_position is not None:
@@ -62,7 +70,7 @@ class VeluxCover(VeluxEntity, CoverEntity):
         return None
 
     @property
-    def current_cover_position(self):
+    def current_cover_position(self) -> int | None:
         """Return the current position of the cover."""
         device = self.device
         if device:
@@ -70,7 +78,7 @@ class VeluxCover(VeluxEntity, CoverEntity):
         return None
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
         """Return additional state attributes."""
         device = self.device
         if device:
@@ -83,7 +91,11 @@ class VeluxCover(VeluxEntity, CoverEntity):
                 "mode": device.mode,
                 "velux_type": device.velux_type,
                 "bridge": device.bridge,
-                "rain_position": getattr(device, "rain_position", None),
-                "secure_position": getattr(device, "secure_position", None),
+                "rain_position": device.rain_position
+                if isinstance(device, VeluxWindowData)
+                else None,
+                "secure_position": (
+                    device.secure_position if isinstance(device, VeluxWindowData) else None
+                ),
             }
         return {}

@@ -10,16 +10,19 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import PERCENTAGE, UnitOfElectricPotential
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
-from .coordinator import VeluxActiveConfigEntry
+from .api import VeluxDevice, VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 from .entity import VeluxEntity
 
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
+) -> bool:
     """Set up Velux Active sensors from a config entry."""
     coordinator = entry.runtime_data
     sensors = []
@@ -39,7 +42,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeluxActiveConfigEntry, 
     return True
 
 
-def create_gateway_sensors(coordinator, device):
+def create_gateway_sensors(
+    coordinator: VeluxCoordinator, device: VeluxGatewayData
+) -> list[VeluxSensor]:
     """Create sensors for Velux Gateway."""
     sensors = []
     # Sensor for wifi_strength
@@ -68,7 +73,9 @@ def create_gateway_sensors(coordinator, device):
     return sensors
 
 
-def create_cover_sensors(coordinator, device):
+def create_cover_sensors(
+    coordinator: VeluxCoordinator, device: VeluxWindowData | VeluxShutterData
+) -> list[VeluxSensor]:
     """Create sensors for Velux Window or Shutter."""
     sensors = []
     # Sensor for target_position
@@ -107,7 +114,9 @@ def create_cover_sensors(coordinator, device):
     return sensors
 
 
-def create_switch_sensors(coordinator, device):
+def create_switch_sensors(
+    coordinator: VeluxCoordinator, device: VeluxSwitchData
+) -> list[VeluxSensor]:
     """Create sensors for Velux Switch."""
     sensors = []
     # Sensor for battery_level
@@ -161,19 +170,19 @@ def create_switch_sensors(coordinator, device):
     return sensors
 
 
-class VeluxSensor(VeluxEntity, SensorEntity):
+class VeluxSensor(VeluxEntity[VeluxDevice], SensorEntity):
     """Representation of a Velux sensor."""
 
     def __init__(
         self,
-        coordinator,
-        device,
-        name,
-        attribute,
-        device_class=None,
-        native_unit_of_measurement=None,
-        state_class=None,
-    ):
+        coordinator: VeluxCoordinator,
+        device: VeluxDevice,
+        name: str,
+        attribute: str,
+        device_class: SensorDeviceClass | None = None,
+        native_unit_of_measurement: str | None = None,
+        state_class: SensorStateClass | None = None,
+    ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, device)
         self._attr_unique_id = f"{device.id}_{attribute}"
@@ -184,11 +193,11 @@ class VeluxSensor(VeluxEntity, SensorEntity):
         self._attr_state_class = state_class
 
     @property
-    def native_value(self):
+    def native_value(self) -> str | float | int | datetime | None:
         """Return the value reported by the sensor."""
         device = self.device
         if device:
-            value = getattr(device, self._attribute, None)
+            value: object = getattr(device, self._attribute, None)
             if self._attribute == "last_seen" and value is not None:
                 if isinstance(value, datetime):
                     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
@@ -198,17 +207,18 @@ class VeluxSensor(VeluxEntity, SensorEntity):
                     except ValueError, OverflowError, OSError:
                         return None
                 return None
-            return value
+            return value if isinstance(value, (str, int, float, datetime)) else None
         return None
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
         """Return additional state attributes."""
         device = self.device
         if device:
+            bridge: object = getattr(device, "bridge", None)
             return {
                 "last_seen": device.last_seen,
-                "reachable": getattr(device, "reachable", None),
-                "bridge": getattr(device, "bridge", None),
+                "reachable": device.reachable,
+                "bridge": bridge if isinstance(bridge, str) else None,
             }
         return {}
