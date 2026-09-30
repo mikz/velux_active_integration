@@ -1,327 +1,326 @@
-"""API for velux_active bound to Home Assistant OAuth."""
+"""Read-only client for the VELUX ACTIVE cloud API."""
 
-import logging
+import asyncio
 from dataclasses import dataclass, fields
 from datetime import datetime, timedelta
+from typing import Any
 
-from aiohttp import ClientSession
-from homeassistant.helpers import config_entry_oauth2_flow
+from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from .const import API_URL, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET, OAUTH2_TOKEN
-
-_LOGGER = logging.getLogger(__name__)
-# TODO the following two API examples are based on our suggested best practices
-# for libraries using OAuth2 with requests or aiohttp. Delete the one you won't use.
-# For more info see the docs at https://developers.home-assistant.io/docs/api_lib_auth/#oauth2.
+from .const import API_URL, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET
 
 
-# {"access_token":"648567d53ee2239dbd0e367d|e81958a231246475bf0975196490daba","refresh_token":"648567d53ee2239dbd0e367d|f1daeb3476cdecf9a809c828ac5f2178","expires_in":10800,"expire_in":10800,"scope":["all_scopes"]}%
-class AuthToken:
-    """Provide a token for velux_active."""
-
-    def __init__(
-        self, access_token: str, refresh_token: str, expires_in: int, **rest
-    ) -> None:
-        """Initialize the token."""
-        self.access_token = access_token
-        self.refresh_token = refresh_token
-        self.expires_in = timedelta(seconds=expires_in)
-        self.created_at = datetime.now()
-        self.expires_at = self.created_at + self.expires_in
-
-    def valid_in(self, time: timedelta) -> bool:
-        """Return whether the token is valid."""
-        return self.access_token is not None and not self.expires(
-            time or timedelta(seconds=0)
-        )
-
-    def expires(self, time: timedelta) -> bool:
-        """Return whether the token is expired."""
-        _LOGGER.debug(
-            f"Token expires at {self.expires_at} < {datetime.now() + time} ({time})"
-        )
-        return self.expires_at < (datetime.now() + time)
-
-    def __str__(self) -> str:
-        """Return the token as a string."""
-        return f"{self.access_token}"
-
-    def __repr__(self) -> str:
-        """Return the token as a string for debugging."""
-        return f"<AuthToken {self.access_token}>"
-
-
-class VeluxHome:
-    def __init__(self, id: str, name: str, **kwargs) -> None:
-        self.id = id
-        self.name = name
-        self.kwargs = kwargs
-
-    def __str__(self) -> str:
-        return self.id
-
-    def __repr__(self) -> str:
-        return f"<VeluxHome {self.id} {self.name} {self.kwargs}>"
-
-    def __hash__(self):
-        return hash(self.id)
-
-    def __eq__(self, other):
-        if isinstance(other, VeluxHome):
-            return self.id == other.id
-        return False
-
-
-class VeluxModule:
-    def __init__(self, home: VeluxHome, id: str, type: str, **kwargs) -> None:
-        self.id = id
-        self.type = type
-        self.kwargs = kwargs
-        self.home = home
-
-    def __str__(self) -> str:
-        return self.id
-
-    def __repr__(self) -> str:
-        return f"<VeluxModule {self.id} {self.type} {self.kwargs}>"
-
-    def __hash__(self):
-        return hash((self.id, self.type, self.home.id))
-
-    def __eq__(self, other):
-        if isinstance(other, VeluxModule):
-            return (
-                self.home == other.home
-                and self.id == other.id
-                and self.type == other.type
-            )
-        return False
-
-    # Method to make the object behave like a dictionary for splat (**)
-    def __getitem__(self, key):
-        if key in self.kwargs:
-            return self.kwargs[key]
-        if hasattr(self, key):
-            return getattr(self, key)
-
-        raise KeyError(f"Key '{key}' not found in VeluxModule")
-
-    # Optional: Provide the keys for iteration purposes
-    def keys(self):
-        return [*list(self.kwargs.keys()), "id", "type", "home"]
-
-    # Optional: to make it fully compatible with dict-like behavior
-    def __iter__(self):
-        yield from self.keys()
-
-    def items(self):
-        for key in self.keys():
-            yield (key, self[key])
-
-
-class AsyncConfigEntryAuth:
-    """Provide velux_active authentication tied to an OAuth2 based config entry."""
-
-    def __init__(
-        self,
-        websession: ClientSession,
-        oauth_session: config_entry_oauth2_flow.OAuth2Session,
-    ) -> None:
-        """Initialize velux_active auth."""
-        super().__init__(websession)
-        self._oauth_session = oauth_session
-
-    async def async_get_access_token(self) -> str:
-        """Return a valid access token."""
-        if not self._oauth_session.valid_token:
-            await self._oauth_session.async_ensure_token_valid()
-
-        return self._oauth_session.token["access_token"]
-
-
-class VeluxActiveAPI:
-    def __init__(self, websession: ClientSession) -> None:
-        """Initialize the velux_active API."""
-        self._websession = websession
-        self.auth_token = None
-
-    async def authenticate(self, username: str, password: str) -> AuthToken:
-        """Authenticate to the velux_active API."""
-        response = await self._websession.request(
-            "POST",
-            OAUTH2_TOKEN,
-            data={
-                "username": username,
-                "password": password,
-                "grant_type": "password",
-                "user_prefix": "velux",
-                "client_id": OAUTH2_CLIENT_ID,
-                "client_secret": OAUTH2_CLIENT_SECRET,
-            },
-        )
-
-        if not response.ok:
-            raise InvalidAuthError("Invalid username or password")
-
-        self.auth_token = AuthToken(**await response.json())
-
-        return self.auth_token
-
-    async def refresh_access_token(self, auth_token: AuthToken) -> AuthToken:
-        """Refresh the access token."""
-        response = await self._websession.request(
-            "POST",
-            OAUTH2_TOKEN,
-            data={
-                "refresh_token": auth_token.refresh_token,
-                "grant_type": "refresh_token",
-                "client_id": OAUTH2_CLIENT_ID,
-                "client_secret": OAUTH2_CLIENT_SECRET,
-            },
-        )
-
-        response.raise_for_status()
-
-        return AuthToken(**await response.json())
-
-    @property
-    async def access_token(self) -> str:
-        """Return a valid access token."""
-        if not self.auth_token.valid_in(timedelta(hours=2, minutes=59)):
-            try:
-                self.auth_token = await self.refresh_access_token(self.auth_token)
-                _LOGGER.debug(
-                    f"Refreshed Auth Token. Now expires at {self.auth_token.expires_at} (in {self.auth_token.expires_in})"
-                )
-            except Exception as err:
-                raise InvalidAuthError("Invalid refresh token") from err
-
-        return self.auth_token.access_token
-
-    async def get_home_data(self) -> list[VeluxHome]:
-        """Get the home data."""
-
-        access_token = await self.access_token
-        response = await self._websession.request(
-            "POST", API_URL + "/api/gethomedata", data={"access_token": access_token}
-        )
-
-        response.raise_for_status()
-
-        # {'body': {'homes': [{'id': '648568c7fea0e6dd240ca4db', 'name': 'Chata', 'share_info': False, 'gone_after': 14400, 'smart_notifs': True, 'notify_movements': 'empty', 'record_movements': 'empty', 'notify_unknowns': 'empty', 'record_alarms': 'always', 'record_animals': 'empty', 'notify_animals': 'empty', 'events_ttl': 'one_month', 'persons': [], 'record_humans': 'empty', 'notify_humans': 'empty', 'outdoor_record_movements': 'always', 'outdoor_record_animals': 'always', 'outdoor_record_vehicles': 'always', 'outdoor_record_humans': 'always', 'outdoor_notify_movements': 'never', 'outdoor_notify_animals': 'never', 'outdoor_notify_vehicles': 'always', 'outdoor_notify_humans': 'always', 'outdoor_enable_notification_range': 'empty', 'outdoor_notification_begin': 0, 'outdoor_notification_end': 86399, 'doorbell_record_humans': 'always', 'doorbell_notify_humans': 'always', 'place': {'altitude': 293, 'city': 'Prague', 'country': 'CZ', 'location': [14.362734, 50.016443], 'timezone': 'Europe/Prague'}, 'cameras': [], 'smokedetectors': [], 'admin_access_code': None}], 'user': {'reg_locale': 'cs-CZ', 'lang': 'cs-CZ', 'country': 'CZ', 'mail': 'michal@cichra.cz', 'pending_user_consent': True, 'app_telemetry': False}, 'global_info': {'show_tags': True}}, 'status': 'ok', 'time_exec': 0.01279902458190918, 'time_server': 1726354813}
-        response_json = await response.json()
-        _LOGGER.debug(response_json)
-
-        for home in response_json["body"]["homes"]:
-            _LOGGER.debug(home)
-
-        return [VeluxHome(**home) for home in response_json["body"]["homes"]]
-
-    async def get_home_statuses(self, home: VeluxHome) -> list[VeluxModule]:
-        """Get the home data."""
-
-        access_token = await self.access_token
-        response = await self._websession.request(
-            "POST",
-            API_URL + "/api/homestatus",
-            data={"access_token": access_token, "home_id": home.id},
-        )
-
-        response.raise_for_status()
-
-        response_json = await response.json()
-
-        _LOGGER.debug(await response.text())
-
-        return [
-            VeluxModule(home, **module)
-            for module in response_json["body"]["home"]["modules"]
-        ]
+class APIConnectionError(Exception):
+    """VELUX is unavailable or returned an invalid response."""
 
 
 class InvalidAuthError(Exception):
-    """Exception raised when authentication fails."""
+    """VELUX rejected the account or token."""
 
 
-@dataclass
+class RateLimitError(APIConnectionError):
+    """VELUX asked the client to wait before another request."""
+
+    def __init__(self, retry_after: int = 60) -> None:
+        super().__init__("VELUX API rate limit reached")
+        self.retry_after = retry_after
+
+
+class AuthToken:
+    """A token whose representation never contains credentials."""
+
+    def __init__(self, access_token: str, refresh_token: str, expires_in: int, **rest):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.expires_in = timedelta(seconds=expires_in)
+        self.expires_at = datetime.now() + self.expires_in
+
+    def valid_in(self, margin: timedelta = timedelta(seconds=30)) -> bool:
+        return bool(self.access_token) and self.expires_at > datetime.now() + margin
+
+    def __repr__(self) -> str:
+        return "<AuthToken redacted>"
+
+
+@dataclass(frozen=True)
+class VeluxHome:
+    """Home identity, with topology kept out of logs and equality."""
+
+    id: str
+    name: str
+    # Topology is cached separately on the API client.
+
+
+class VeluxModule:
+    """A status record with the static metadata supplied by homesdata."""
+
+    def __init__(self, home: VeluxHome, id: str, type: str, **kwargs):
+        self.home, self.id, self.type = home, id, type
+        self.kwargs = kwargs
+
+    def __getitem__(self, key):
+        if key in {"home", "id", "type"}:
+            return getattr(self, key)
+        return self.kwargs[key]
+
+    def keys(self):
+        return ["home", "id", "type", *self.kwargs]
+
+
+class VeluxActiveAPI:
+    """Authenticate and poll without sending device commands."""
+
+    def __init__(self, websession: ClientSession, *, base_url: str = API_URL):
+        self._websession = websession
+        self._base_url = base_url.rstrip("/")
+        self.auth_token: AuthToken | None = None
+        self._credentials: tuple[str, str] | None = None
+        self._token_lock = asyncio.Lock()
+        self._topology: dict[str, dict[str, dict[str, Any]]] = {}
+
+    async def _request(self, path, *, data=None, token=None):
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        try:
+            async with self._websession.request(
+                "POST",
+                self._base_url + path,
+                data=data,
+                headers=headers,
+                timeout=ClientTimeout(total=20),
+            ) as response:
+                try:
+                    payload = await response.json(content_type=None)
+                except ValueError:
+                    payload = None
+                error = payload.get("error") if isinstance(payload, dict) else None
+                code = error.get("code") if isinstance(error, dict) else error
+                if response.status == 429 or code in (26, "26"):
+                    delay = response.headers.get("Retry-After", "60")
+                    raise RateLimitError(min(max(int(delay), 1), 3600) if delay.isdigit() else 60)
+                if response.status in (401, 403) or code in (
+                    1,
+                    2,
+                    3,
+                    "invalid_grant",
+                    "invalid_token",
+                    "invalid_client",
+                ):
+                    raise InvalidAuthError("VELUX rejected authentication")
+                if response.status >= 400 or error:
+                    raise APIConnectionError(f"VELUX request failed (HTTP {response.status})")
+                if not isinstance(payload, dict):
+                    raise APIConnectionError("VELUX returned an invalid JSON response")
+                return payload
+        except (ClientError, TimeoutError) as err:
+            raise APIConnectionError("Cannot reach the VELUX cloud API") from err
+
+    async def _token_request(self, data):
+        payload = await self._request(
+            "/oauth2/token",
+            data={
+                "client_id": OAUTH2_CLIENT_ID,
+                "client_secret": OAUTH2_CLIENT_SECRET,
+                "app_version": "791302006",
+                **data,
+            },
+        )
+        try:
+            lifetime = int(payload.get("expires_in", payload.get("expire_in", 10800)))
+            access, refresh = payload["access_token"], payload["refresh_token"]
+            if (
+                not isinstance(access, str)
+                or not access
+                or not isinstance(refresh, str)
+                or not refresh
+            ):
+                raise ValueError
+            if lifetime <= 0:
+                raise ValueError
+            return AuthToken(access, refresh, lifetime)
+        except (KeyError, ValueError, TypeError) as err:
+            raise APIConnectionError("VELUX returned an invalid token response") from err
+
+    async def authenticate(self, username: str, password: str) -> AuthToken:
+        token = await self._token_request(
+            {
+                "grant_type": "password",
+                "username": username,
+                "password": password,
+                "user_prefix": "velux",
+                "scope": "velux_scopes",
+            }
+        )
+        self._credentials = (username, password)
+        self.auth_token = token
+        return token
+
+    async def refresh_access_token(self, auth_token: AuthToken) -> AuthToken:
+        return await self._token_request(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": auth_token.refresh_token,
+            }
+        )
+
+    @property
+    async def access_token(self) -> str:
+        async with self._token_lock:
+            if self.auth_token is not None and self.auth_token.valid_in():
+                return self.auth_token.access_token
+            if self.auth_token is not None:
+                try:
+                    self.auth_token = await self.refresh_access_token(self.auth_token)
+                    return self.auth_token.access_token
+                except InvalidAuthError:
+                    pass
+            if self._credentials is None:
+                raise InvalidAuthError("VELUX login is required")
+            await self.authenticate(*self._credentials)
+            return self.auth_token.access_token
+
+    async def _api_request(self, path, data=None):
+        # Retry a rejected access token once. Network errors never trigger a login.
+        token = await self.access_token
+        try:
+            return await self._request(path, data=data, token=token)
+        except InvalidAuthError:
+            if self.auth_token is not None and self.auth_token.access_token == token:
+                self.auth_token.expires_at = datetime.min
+        return await self._request(path, data=data, token=await self.access_token)
+
+    async def get_home_data(self) -> list[VeluxHome]:
+        payload = await self._api_request("/api/homesdata")
+        try:
+            homes = payload["body"]["homes"]
+            result = []
+            for home in homes:
+                home_id = home["id"]
+                self._topology[home_id] = {m["id"]: m for m in home.get("modules", [])}
+                result.append(VeluxHome(home_id, home.get("name", "Home")))
+            return result
+        except (KeyError, TypeError, AttributeError) as err:
+            raise APIConnectionError("VELUX returned invalid home topology") from err
+
+    async def get_home_statuses(self, home: VeluxHome) -> list[VeluxModule]:
+        payload = await self._api_request("/api/homestatus", {"home_id": home.id})
+        try:
+            records = payload["body"]["home"]["modules"]
+            modules = []
+            for record in records:
+                # Never retain a previous rain/position/reachability measurement.
+                topology = self._topology.get(home.id, {}).get(record["id"], {})
+                metadata = {
+                    k: v
+                    for k, v in topology.items()
+                    if k
+                    in {
+                        "id",
+                        "type",
+                        "name",
+                        "bridge",
+                        "manufacturer",
+                        "velux_type",
+                        "firmware_revision",
+                        "firmware_revision_netatmo",
+                        "firmware_revision_thirdparty",
+                        "hardware_version",
+                    }
+                }
+                modules.append(VeluxModule(home, **(metadata | record)))
+            return modules
+        except (KeyError, TypeError, AttributeError) as err:
+            raise APIConnectionError("VELUX returned invalid home status") from err
+
+
+def device_from_module(module: VeluxModule):
+    """Ignore new API fields and preserve absent measurements as unknown."""
+    model = {"NXG": VeluxGatewayData, "NXS": VeluxSwitchData, "NXD": VeluxSwitchData}.get(
+        module.type
+    )
+    if module.type == "NXO":
+        model = {"window": VeluxWindowData, "shutter": VeluxShutterData}.get(
+            module.kwargs.get("velux_type")
+        )
+    if model is None:
+        return None
+    names = {field.name for field in fields(model)}
+    return model(**{key: module[key] for key in module.keys() if key in names})
+
+
+@dataclass(kw_only=True)
 class VeluxGatewayData:
     home: VeluxHome
-    busy: bool
-    calibrating: bool
-    firmware_revision_netatmo: int
-    firmware_revision_thirdparty: str
-    hardware_version: int
+    busy: bool | None = None
+    calibrating: bool | None = None
+    firmware_revision_netatmo: int | None = None
+    firmware_revision_thirdparty: str | None = None
+    hardware_version: int | None = None
     id: str
-    is_raining: bool
-    last_seen: int
-    locked: bool
-    locking: bool
-    name: str
-    pairing: str
-    secure: bool
+    is_raining: bool | None = None
+    last_seen: int | None = None
+    locked: bool | None = None
+    locking: bool | None = None
+    name: str | None = None
+    pairing: str | None = None
+    secure: bool | None = None
     type: str
-    wifi_strength: int
-    wifi_state: str
+    wifi_strength: int | None = None
+    wifi_state: str | None = None
     outdated_weather_forecast: bool | None = None
+    reachable: bool | None = None
 
     @property
     def unlocked(self) -> bool:
-        return not self.locked
-
-    def update(self, data: dict):
-        """Update the dataclass attributes with new data."""
-        for field in fields(self):
-            if field.name in data:
-                setattr(self, field.name, data[field.name])
+        return None if self.locked is None else not self.locked
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VeluxWindowData:
     home: VeluxHome
-    current_position: int
-    firmware_revision: int
+    current_position: int | None = None
+    firmware_revision: int | None = None
     id: str
-    last_seen: int
-    manufacturer: str
-    mode: str
-    reachable: bool
-    silent: bool
-    target_position: int
+    last_seen: int | None = None
+    manufacturer: str | None = None
+    mode: str | None = None
+    reachable: bool | None = None
+    silent: bool | None = None
+    target_position: int | None = None
     type: str
-    velux_type: str
-    bridge: str
-    rain_position: int
-    secure_position: int
+    velux_type: str | None = None
+    bridge: str | None = None
+    rain_position: int | None = None
+    secure_position: int | None = None
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VeluxShutterData:
     home: VeluxHome
-    current_position: int
-    firmware_revision: int
+    current_position: int | None = None
+    firmware_revision: int | None = None
     id: str
-    last_seen: int
-    manufacturer: str
-    mode: str
-    reachable: bool
-    silent: bool
-    target_position: int
+    last_seen: int | None = None
+    manufacturer: str | None = None
+    mode: str | None = None
+    reachable: bool | None = None
+    silent: bool | None = None
+    target_position: int | None = None
     type: str
-    velux_type: str
-    bridge: str
+    velux_type: str | None = None
+    bridge: str | None = None
 
 
-@dataclass
+@dataclass(kw_only=True)
 class VeluxSwitchData:
     home: VeluxHome
-    battery_level: int
-    battery_percent: int
-    firmware_revision: int
+    battery_level: int | None = None
+    battery_percent: int | None = None
+    firmware_revision: int | None = None
     id: str
-    last_seen: int
-    reachable: bool
-    rf_strength: int
+    last_seen: int | None = None
+    reachable: bool | None = None
+    rf_strength: int | None = None
     type: str
-    bridge: str
-    battery_state: str
-    rf_state: str
+    bridge: str | None = None
+    battery_state: str | None = None
+    rf_state: str | None = None

@@ -1,0 +1,21 @@
+homeassistant:
+  name: VELUX Cloud Lab
+  latitude: 0
+  longitude: 0
+  time_zone: UTC
+  unit_system: metric
+analytics:
+frontend:
+lovelace:
+  mode: storage
+config:
+api:
+websocket_api:
+recorder:
+  purge_keep_days: 1
+history:
+persistent_notification:
+logger:
+  default: warning
+  logs:
+    custom_components.velux_active: debug

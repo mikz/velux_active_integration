@@ -1,6 +1,7 @@
 {
-    "name": "Velux Active Integration",
-    "hide_default_branch": true,
-    "homeassistant": "2024.6.0",
-    "render_readme": true
+  "name": "VELUX ACTIVE",
+  "homeassistant": "2026.9.3",
+  "render_readme": true,
+  "zip_release": true,
+  "filename": "velux_active.zip"
 }

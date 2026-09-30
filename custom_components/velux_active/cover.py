@@ -5,7 +5,6 @@ import logging
 from homeassistant.components.cover import CoverDeviceClass, CoverEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import VeluxShutterData, VeluxWindowData
@@ -13,14 +12,13 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
-):
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities):
     """Set up Velux Active covers from a config entry."""
-    coordinator = hass.data[DOMAIN]["coordinator"]
+    coordinator = entry.runtime_data
     covers = []
 
-    for home in hass.data[DOMAIN]["homes"]:
+    for home in coordinator.data:
         devices = coordinator.data[home]["devices"]
         for device in devices:
             if isinstance(device, VeluxWindowData):
@@ -33,6 +31,7 @@ async def async_setup_entry(
     async_add_entities(covers)
 
     return True
+
 
 class VeluxCover(CoordinatorEntity, CoverEntity):
     """Representation of a Velux cover (window or shutter)."""
@@ -48,9 +47,7 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
         # Generate a name using available attributes
         self._attr_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
 
-        self._attr_device_class = (
-            CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
-        )
+        self._attr_device_class = CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
 
         # Remove the 'supported_features' attribute as it's deprecated
         # Since the cover is read-only, we don't implement any control methods
@@ -108,20 +105,9 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
     def available(self):
         """Return True if entity is available."""
         device = self.device
-        return device is not None and device.reachable
+        return super().available and device is not None and device.reachable is not False
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information about this Velux device."""
-        device = self.device
-        if device:
-            device_name = f"{getattr(device, 'velux_type', device.type).capitalize()} {device.id[-4:]}"
-            return {
-                "identifiers": {(DOMAIN, self._device_id)},
-                "name": device_name,
-                "manufacturer": device.manufacturer,
-                "model": device.velux_type,
-                "sw_version": device.firmware_revision,
-                "via_device": (DOMAIN, device.bridge),
-            }
-        return None
+    def device_info(self):
+        """Reference the device registered before platform setup."""
+        return {"identifiers": {(DOMAIN, self._device_id)}}
