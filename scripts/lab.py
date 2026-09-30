@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -75,6 +76,7 @@ def image_references(ha_version, digest):
 def lab_source_hashes():
     """Bind prepared images to the harness that runtime will actually execute."""
     files = [ROOT / "scripts/lab.py", ROOT / "tests/__init__.py", ROOT / "uv.lock"]
+    files.extend((ROOT / "tests/fixtures").glob("*.json"))
     files.extend(
         path
         for path in (ROOT / "tests/lab").rglob("*")
@@ -87,6 +89,18 @@ def lab_source_hashes():
 
 
 def prepare(args):
+    """Exclude overlapping preparation that could mix shared TLS image inputs."""
+    directory = ROOT / ".lab"
+    directory.mkdir(exist_ok=True)
+    with (directory / "prepare.lock").open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("Another lab preparation is active; prepare sequentially") from error
+        _prepare(args)
+
+
+def _prepare(args):
     """Only this phase is allowed to fetch/build dependencies."""
     command([sys.executable, "scripts/release.py", "verify"], capture=False)
     archive = ROOT / "dist/velux_active.zip"

@@ -1,6 +1,7 @@
 """Hold application startup until host inspection proves the private network."""
 
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -44,6 +45,12 @@ def main():
             target = config / "custom_components"
             target.mkdir(exist_ok=True)
             shutil.copytree("/opt/velux-active/integration", target / "velux_active")
+            # A real version-one entry/registry exists BEFORE candidate first setup.
+            storage = config / ".storage"
+            storage.mkdir(exist_ok=True)
+            fixtures = json.loads(Path("/lab/legacy_storage.json").read_text())
+            for key, payload in fixtures.items():
+                (storage / key).write_text(json.dumps(payload) + "\n")
             receipt.write_text(digest + "\n")
     os.execvp(command[0], command)
 

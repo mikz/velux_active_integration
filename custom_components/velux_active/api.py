@@ -10,6 +10,27 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 
 from .const import API_URL, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET
 
+BOOLEAN_FIELDS = frozenset(
+    {
+        "is_raining",
+        "reachable",
+        "silent",
+        "busy",
+        "calibrating",
+        "locked",
+        "locking",
+        "secure",
+        "outdated_weather_forecast",
+    }
+)
+
+
+def validate_boolean_fields(record: dict) -> None:
+    """Missing/null is unknown; supplied boolean values must actually be booleans."""
+    for key in BOOLEAN_FIELDS:
+        if (value := record.get(key)) is not None and not isinstance(value, bool):
+            raise APIConnectionError("VELUX returned an invalid boolean measurement")
+
 
 class APIConnectionError(Exception):
     """VELUX is unavailable or returned an invalid response."""
@@ -220,6 +241,7 @@ class VeluxActiveAPI:
                 raise TypeError
             modules = []
             for record in records:
+                validate_boolean_fields(record)
                 # Never retain a previous rain/position/reachability measurement.
                 topology = self._topology.get(home.id, {}).get(record["id"], {})
                 metadata = {
@@ -256,6 +278,7 @@ def device_from_module(module: VeluxModule):
         )
     if model is None:
         return None
+    validate_boolean_fields(module.kwargs)
     names = {field.name for field in fields(model)}
     return model(**{key: module[key] for key in module.keys() if key in names})
 

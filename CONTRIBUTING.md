@@ -53,6 +53,13 @@ The native upgrade test seeds it before setup and checks update, reload, and
 reauthentication. The container lab additionally checks persisted custom names,
 disabled entities, entry IDs, and all unique/entity IDs across a real HA restart.
 Never derive these fixtures from a production export.
+`legacy_storage.json` is generated before candidate setup using native registry
+serializers. Regenerate it explicitly with
+`uv run pytest scripts/generate_legacy_fixture.py -q`; the pinned pytest `hass`
+fixture owns initialization and teardown. The lab seeds this storage before the
+candidate's first boot, asserts the complete live inventory, and finishes with
+a clean remove/re-add login path. Registry preservation checks must fail when
+an original unique ID is deliberately changed, even if a duplicate works.
 
 Run the commands in the README with `uv sync --locked`. The source suite uses the
 pinned native Home Assistant pytest harness and a local synthetic HTTP service.
@@ -65,10 +72,15 @@ Missing files fail the gate. Do not add coverage exclusions to meet the gate.
 
 The Docker lab checks the deterministic release archive through actual Home
 Assistant REST/WebSocket APIs. It complements source coverage; its scenarios are
-not added to the coverage percentage. Runtime networking remains isolated; any
+not added to the coverage percentage. Runtime networking remains isolated. Any
 explicitly authorized real-service smoke test runs separately and emits only
 safe status/count summaries. Never print credentials, tokens, account/home/device
 IDs or names, or raw cloud payloads from that check.
+
+Prepare target versions sequentially in a shared checkout: preparation replaces
+the shared synthetic TLS certificate before building all three images. Overlap
+can mix certificates and fail TLS verification before integration setup.
+An exclusive preparation lock rejects overlapping image builds.
 
 ## Dependency and asset provenance
 

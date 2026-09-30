@@ -98,6 +98,21 @@ class Lab:
         }
         return {"entities": entities, "devices": devices}
 
+    async def assert_live_legacy_inventory(self, fixture):
+        """Original disabled preferences and every live enabled ID are required."""
+        expected = {item["unique_id"]: item["entity_id"] for item in fixture["entities"]}
+        assert await self.registry() == expected
+        states = {state["entity_id"]: state for state in await self.request("GET", "/api/states")}
+        entries = [
+            e
+            for e in await self.ws("config/entity_registry/list")
+            if e["config_entry_id"] == self.entry
+        ]
+        assert len(entries) == len(expected)
+        for item in fixture["entities"]:
+            assert (item["entity_id"] in states) is not item["disabled"]
+        assert self.rain in states
+
     async def loaded(self):
         entries = await self.ws("config_entries/get")
         return any(e["entry_id"] == self.entry and e["state"] == "loaded" for e in entries)
@@ -173,19 +188,17 @@ class Lab:
             assert config["version"] == os.environ["LAB_HA_VERSION"]
             await eventually(self.sim)
 
-        async with self.scenario("native-login-and-sparse-cloud-status"):
-            flow = await self.request(
-                "POST", "/api/config/config_entries/flow", {"handler": "velux_active"}
+        async with self.scenario("legacy-first-setup-preserves-live-complete-inventory"):
+            fixture = json.loads(
+                await asyncio.to_thread(Path("tests/fixtures/legacy_v1.json").read_text)
             )
-            path = "/api/config/config_entries/flow/" + flow["flow_id"]
-            wrong = await self.request("POST", path, {"username": USERNAME, "password": "wrong"})
-            assert wrong["errors"]["base"] == "invalid_auth"
-            result = await self.request("POST", path, {"username": USERNAME, "password": PASSWORD})
-            assert result["type"] == "create_entry"
-            self.entry = result["result"]["entry_id"]
+            self.entry = fixture["entry_id"]
             await eventually(self.loaded)
-            self.original_ids = await self.registry()
-            self.rain = self.original_ids["lab-gateway_is_raining"]
+            expected = {item["unique_id"]: item["entity_id"] for item in fixture["entities"]}
+            self.original_ids = expected
+            self.rain = expected["lab-gateway_is_raining"]
+            await self.assert_live_legacy_inventory(fixture)
+            self.original_preferences = await self.preferences()
             await eventually(self.state, lambda value: value == "off")
             for entity in ("cover.window_ndow", "cover.shutter_tter"):
                 state = await self.request("GET", "/api/states/" + entity)
@@ -193,6 +206,10 @@ class Lab:
             before = (await self.sim())["counts"].get("refresh_token", 0)
             await self.refresh("off")
             assert (await self.sim())["counts"].get("refresh_token", 0) == before
+            flow = await self.request(
+                "POST", "/api/config/config_entries/flow", {"handler": "velux_active"}
+            )
+            assert flow["type"] == "abort" and flow["reason"] == "single_instance_allowed"
 
         async with self.scenario("packaged-local-brand-image"):
             async with self.session.get(
@@ -206,41 +223,6 @@ class Lab:
 
             with zipfile.ZipFile("/opt/velux-active/velux_active.zip") as archive:
                 assert payload == archive.read("brand/icon.png")
-
-        async with self.scenario("synthetic-legacy-registry-preferences"):
-            await self.ws(
-                "config/entity_registry/update",
-                entity_id=self.original_ids["lab-gateway_is_raining"],
-                name="My rain",
-            )
-            await self.ws(
-                "config/entity_registry/update",
-                entity_id=self.original_ids["lab-window_target_position"],
-                name="My target",
-                disabled_by="user",
-            )
-            await self.ws(
-                "config/entity_registry/update",
-                entity_id=self.original_ids["lab-switch_battery_percent"],
-                new_entity_id="sensor.switch_itch_battery_percent",
-                name="My battery",
-            )
-            registry = await self.preferences()
-            for device_id in registry["devices"]:
-                await self.ws(
-                    "config/device_registry/update",
-                    device_id=device_id,
-                    name_by_user="My synthetic device",
-                )
-            self.original_ids = await self.registry()
-            self.original_preferences = await self.preferences()
-            disabled = self.original_ids["lab-window_target_position"]
-
-            async def disabled_absent():
-                states = await self.request("GET", "/api/states")
-                return all(state["entity_id"] != disabled for state in states)
-
-            await eventually(disabled_absent)
 
         async with self.scenario("rain-transitions-and-missing-measurement"):
             await self.sim({"rain": True})
@@ -283,6 +265,7 @@ class Lab:
             await eventually(self.loaded)
             assert await self.registry() == self.original_ids
             assert await self.preferences() == self.original_preferences
+            await self.assert_live_legacy_inventory(fixture)
             await self.sim({"rain": True})
             await self.refresh("on")
 
@@ -302,6 +285,7 @@ class Lab:
             await eventually(self.state, lambda value: value == "on")
             assert await self.registry() == self.original_ids
             assert await self.preferences() == self.original_preferences
+            await self.assert_live_legacy_inventory(fixture)
 
         async with self.scenario("native-reauthentication-preserves-entry"):
             new_password = "changed-synthetic-password"
@@ -328,8 +312,34 @@ class Lab:
             await eventually(self.state, lambda value: value == "on")
             assert await self.registry() == self.original_ids
             assert await self.preferences() == self.original_preferences
+            await self.assert_live_legacy_inventory(fixture)
             await self.sim({"rain": False})
             await self.refresh("off")
+
+        async with self.scenario("remove-and-fresh-native-user-flow"):
+            legacy_entry = self.entry
+            await self.request("DELETE", f"/api/config/config_entries/entry/{legacy_entry}")
+            assert not await self.registry()
+            await self.sim(
+                {"password": PASSWORD, "invalidate_access": True, "invalidate_refresh": True}
+            )
+            flow = await self.request(
+                "POST", "/api/config/config_entries/flow", {"handler": "velux_active"}
+            )
+            path = "/api/config/config_entries/flow/" + flow["flow_id"]
+            wrong = await self.request("POST", path, {"username": USERNAME, "password": "wrong"})
+            assert wrong["errors"]["base"] == "invalid_auth"
+            result = await self.request("POST", path, {"username": USERNAME, "password": PASSWORD})
+            assert result["type"] == "create_entry"
+            self.entry = result["result"]["entry_id"]
+            assert self.entry != legacy_entry
+            await eventually(self.loaded)
+            fresh = await self.registry()
+            assert set(fresh) == set(self.original_ids)
+            self.rain = fresh["lab-gateway_is_raining"]
+            await eventually(self.state, lambda state: state == "off")
+            await self.sim({"rain": True})
+            await self.refresh("on")
 
         (ARTIFACTS / "acceptance.json").write_text(
             json.dumps(

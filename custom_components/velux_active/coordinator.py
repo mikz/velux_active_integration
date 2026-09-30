@@ -36,6 +36,8 @@ class VeluxCoordinator(DataUpdateCoordinator):
         self.api = VeluxActiveAPI(aiohttp_client.async_get_clientsession(hass))
         self.homes = None
         self._manual_task: asyncio.Task | None = None
+        self._device_reachability: dict[str, bool] = {}
+        self._device_log_labels: dict[str, int] = {}
 
     async def _async_manual_update(self) -> tuple[bool, Exception | None]:
         """Capture this operation's result before a later poll can change it."""
@@ -59,6 +61,23 @@ class VeluxCoordinator(DataUpdateCoordinator):
                 raise HomeAssistantError("VELUX ACTIVE was unloaded during refresh") from None
             raise
 
+    def _log_device_transitions(self, data: dict) -> None:
+        """Emit one anonymous device transition, regardless of entity count."""
+        for home in data.values():
+            for device in home["devices"]:
+                reachable = getattr(device, "reachable", None)
+                if reachable is None:
+                    continue
+                previous = self._device_reachability.get(device.id)
+                self._device_reachability[device.id] = reachable
+                label = self._device_log_labels.setdefault(
+                    device.id, len(self._device_log_labels) + 1
+                )
+                if reachable is False and previous is not False:
+                    _LOGGER.info("VELUX device %s is unavailable", label)
+                elif reachable is True and previous is False:
+                    _LOGGER.info("VELUX device %s recovered", label)
+
     async def _async_update_data(self):
         try:
             if self.api.auth_token is None:
@@ -77,6 +96,7 @@ class VeluxCoordinator(DataUpdateCoordinator):
                         if (device := device_from_module(module)) is not None
                     ]
                 }
+            self._log_device_transitions(data)
             return data
         except InvalidAuthError as err:
             raise ConfigEntryAuthFailed("VELUX login must be renewed") from err

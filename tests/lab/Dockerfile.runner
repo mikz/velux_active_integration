@@ -7,6 +7,7 @@ RUN update-ca-certificates
 WORKDIR /app
 COPY tests/__init__.py /app/tests/__init__.py
 COPY tests/lab /app/tests/lab
+COPY tests/fixtures /app/tests/fixtures
 COPY dist/velux_active.zip /opt/velux-active/velux_active.zip
 COPY tests/lab/gate.py /lab/gate.py
 ENV PYTHONUNBUFFERED=1

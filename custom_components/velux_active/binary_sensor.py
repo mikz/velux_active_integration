@@ -158,7 +158,7 @@ class VeluxBinarySensor(VeluxEntity, BinarySensorEntity):
         device = self.device
         if device:
             value = getattr(device, self._attribute, None)
-            return bool(value) if value is not None else None
+            return value
         return None
 
     @property

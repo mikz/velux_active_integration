@@ -308,6 +308,16 @@ async def test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reaut
 
     def assert_identity():
         assert entry.entry_id == fixture["entry_id"] and entry.version == 1
+        expected_inventory = {item["unique_id"]: item["entity_id"] for item in fixture["entities"]}
+        actual = [
+            registered
+            for registered in entities.entities.values()
+            if registered.config_entry_id == entry.entry_id
+        ]
+        assert len(actual) == len(expected_inventory)
+        assert {
+            registered.unique_id: registered.entity_id for registered in actual
+        } == expected_inventory
         for item in fixture["entities"]:
             registered = entities.async_get(item["entity_id"])
             assert registered.unique_id == item["unique_id"]
@@ -318,11 +328,17 @@ async def test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reaut
             assert devices.async_get(registered.device_id).name_by_user == "My " + item["device"]
             if item["disabled"]:
                 assert hass.states.get(item["entity_id"]) is None
+            else:
+                assert hass.states.get(item["entity_id"]) is not None
+        assert hass.states.get("binary_sensor.gateway_lab_gateway_is_raining").state == (
+            "on" if simulator.state["rain"] else "off"
+        )
 
     with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert_identity()
+        simulator.state["rain"] = True
         await refresh(hass)
         assert_identity()
         assert await hass.config_entries.async_reload(entry.entry_id)
@@ -341,3 +357,54 @@ async def test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reaut
         assert result["reason"] == "reauth_successful"
         await hass.async_block_till_done()
         assert_identity()
+
+
+@pytest.mark.parametrize("value", [[], {}, "", "false", "true", 0, 1])
+async def test_invalid_wire_rain_fails_native_refresh_and_recovers(hass, loaded, value):
+    entry, simulator, _ = loaded
+    registry = er.async_get(hass)
+    rain = registry.async_get_entity_id("binary_sensor", "velux_active", "lab-gateway_is_raining")
+    assert hass.states.get(rain).state == "off"
+    simulator.state["rain"] = value
+    with pytest.raises(HomeAssistantError, match="refresh failed"):
+        await refresh(hass)
+    assert hass.states.get(rain).state == "unavailable"
+    simulator.state["rain"] = None
+    await refresh(hass)
+    assert hass.states.get(rain).state == "unknown"
+    simulator.state["rain"] = False
+    await refresh(hass)
+    assert hass.states.get(rain).state == "off"
+    simulator.state["rain"] = True
+    await refresh(hass)
+    assert hass.states.get(rain).state == "on"
+    assert entry.runtime_data.last_update_success
+
+
+async def test_device_disconnection_and_recovery_logs_are_deduplicated(hass, loaded, caplog):
+    _, simulator, _ = loaded
+    for reachable in (False, False, True, True):
+        simulator.state["reachable"] = reachable
+        await refresh(hass)
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "custom_components.velux_active.coordinator"
+        and record.levelname == "INFO"
+    ]
+    assert messages == ["VELUX device 1 is unavailable", "VELUX device 1 recovered"]
+    assert "lab-gateway" not in " ".join(messages)
+
+
+async def test_legacy_identity_oracle_rejects_deliberate_rain_unique_id_mutation(hass, cloud):
+    from custom_components.velux_active.binary_sensor import VeluxBinarySensor
+
+    initialize = VeluxBinarySensor.__init__
+
+    def mutate(entity, *args, **kwargs):
+        initialize(entity, *args, **kwargs)
+        if entity._attribute == "is_raining":
+            entity._attr_unique_id += "_mutation"
+
+    with patch.object(VeluxBinarySensor, "__init__", mutate), pytest.raises(AssertionError):
+        await test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reauth(hass, cloud)
