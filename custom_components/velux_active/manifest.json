@@ -9,8 +9,8 @@
   "documentation": "https://github.com/mikz/velux_active_integration",
   "homekit": {
     "models": [
-      "VELUX Gateway",
-      "VELUX Gateway\u0000"
+      "VELUX Gatewa[y]",
+      "VELUX Gateway[\u0000]"
     ]
   },
   "integration_type": "hub",

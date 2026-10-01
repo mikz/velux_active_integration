@@ -46,3 +46,21 @@ jobs:
       - run: uv run pytest scripts/generate_legacy_recorder.py -q
       - run: python scripts/lab.py prepare --ha-version '${{ matrix.ha }}'
       - run: python scripts/lab.py test --ha-version '${{ matrix.ha }}'
+      - name: Upload sanitized lab receipts and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: lab-${{ matrix.ha }}-receipts
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/lab/*/sanitized.json
+            artifacts/lab/*/summary.json
+            artifacts/lab/*/scenarios.json
+            artifacts/lab/*/acceptance.json
+            artifacts/lab/*/prepared.json
+            artifacts/lab/*/isolation.json
+            artifacts/lab/*/cleanup-verification.json
+            artifacts/lab/*/runner.log
+            artifacts/lab/*/ha.log
+            artifacts/lab/*/simulator.log

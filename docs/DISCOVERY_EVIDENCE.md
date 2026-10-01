@@ -14,6 +14,15 @@ The owner proved that native HA9.4 decoding retains the terminal NUL and that
 canonical-only model matching fails; exact canonical and single-terminal-NUL
 spellings match. The persistent reviewer accepted this bounded provenance.
 
+The manifest encodes the two spellings as anchored singleton-class patterns
+`VELUX Gatewa[y]` and `VELUX Gateway[\u0000]`. Each class matches exactly one
+character. This avoids hassfest’s textual-prefix overlap check and HA’s literal
+model hyphen-prefix fallback without accepting a vendor wildcard. Source and
+installed tests build both native lookup and compiled matcher maps before
+routing raw TXT; suffixes, embedded/doubled NULs and literal bracket spellings
+are rejected at routing as well as by the exact flow guard. Do not simplify
+these patterns to `VELUX*`.
+
 Implement a native HomeKit discovery hint with explicit confirmation into the
 existing account login. Accept only those two exact model spellings; never infer
 an account identity from a HAP identifier, persist/contact a local host, or

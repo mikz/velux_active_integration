@@ -1003,3 +1003,44 @@ async def test_contradictory_duplicate_rain_status_fails_atomically_and_recovers
     del simulator.state["status_payload"]
     await refresh(hass)
     assert hass.states.get(rain).state == "off"
+
+
+async def test_topology_deadline_renews_absence_and_expires_at_exact_boundary(hass, cloud):
+    """A representable absolute deadline must not be delayed by elapsed subtraction."""
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+    from tests.lab.cloud import HOME
+
+    simulator, api = cloud
+    entry = MockConfigEntry(
+        domain="velux_active", version=1, data={"username": USERNAME, "password": PASSWORD}
+    )
+    entry.add_to_hass(hass)
+    now = 0.3
+    with (
+        patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api),
+        patch("custom_components.velux_active.coordinator.monotonic", side_effect=lambda: now),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        device = dr.async_get(hass).async_get_device_by_identifier(
+            ("velux_active", "lab-gateway"), entry.entry_id
+        )
+        simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+        simulator.state["status_payload"] = {
+            "body": {"home": {"modules": [{"id": "lab-gateway", "type": "FUTURE"}]}}
+        }
+        now += 300
+        await refresh(hass)
+        assert simulator.counts["homesdata"] == 2
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        now += 300
+        await refresh(hass)
+        assert simulator.counts["homesdata"] == 3
+        assert await async_remove_config_entry_device(hass, entry, device)
+        now += 300
+        assert not await async_remove_config_entry_device(hass, entry, device)

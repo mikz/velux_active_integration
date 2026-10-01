@@ -621,11 +621,15 @@ async def discovery(hass):
     from ipaddress import IPv4Address
 
     from homeassistant import loader
-    from homeassistant.components.zeroconf.discovery import ZeroconfDiscovery, info_from_service
+    from homeassistant.components.zeroconf.discovery import (
+        ZeroconfDiscovery,
+        build_homekit_model_lookups,
+        info_from_service,
+    )
     from homeassistant.helpers import discovery_flow
     from zeroconf.asyncio import AsyncServiceInfo
 
-    models = await loader.async_get_homekit(hass)
+    models, matchers = build_homekit_model_lookups(await loader.async_get_homekit(hass))
     types = await loader.async_get_zeroconf(hass)
     routes = []
     for model in (b"VELUX Gateway", b"VELUX Gateway\x00"):
@@ -638,7 +642,7 @@ async def discovery(hass):
                 addresses=[IPv4Address("192.0.2.10").packed],
                 properties={b"md": model, b"sf": b"0" if paired else b"1"},
             )
-            router = ZeroconfDiscovery(hass, Mock(), types, models, {}, service)
+            router = ZeroconfDiscovery(hass, Mock(), types, models, matchers, service)
             with patch.object(discovery_flow, "async_create_flow") as dispatch:
                 router._async_process_service_update(service, service.type, service.name)
             domains = {call.args[1] for call in dispatch.call_args_list}
@@ -656,6 +660,27 @@ async def discovery(hass):
                     "homekit_route": True,
                 }
             )
+    for unsupported in (
+        b"VELUX Gateway-evil",
+        b"VELUX Gateway Pro",
+        b"VELUX Gatewayx",
+        b"VELUX Gatewa[y]",
+        b"VELUX Gateway\x00\x00",
+        b"VELUX\x00 Gateway",
+        b"VELUX Gateway\x00suffix",
+    ):
+        rejected = AsyncServiceInfo(
+            service.type,
+            service.name,
+            server="synthetic.local.",
+            port=12345,
+            addresses=[IPv4Address("192.0.2.10").packed],
+            properties={b"md": unsupported, b"sf": b"1"},
+        )
+        router = ZeroconfDiscovery(hass, Mock(), types, models, matchers, rejected)
+        with patch.object(discovery_flow, "async_create_flow") as dispatch:
+            router._async_process_service_update(rejected, rejected.type, rejected.name)
+        assert "velux_active" not in {call.args[1] for call in dispatch.call_args_list}
     info = info_from_service(service)
     bad = replace(info, properties={**info.properties, "md": "VELUX Gateway-evil"})
     result = await hass.config_entries.flow.async_init(

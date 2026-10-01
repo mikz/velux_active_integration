@@ -8,6 +8,7 @@ from homeassistant import loader
 from homeassistant.components.zeroconf.discovery import (
     ZeroconfDiscovery,
     async_get_homekit_discovery,
+    build_homekit_model_lookups,
     info_from_service,
 )
 from homeassistant.config_entries import SOURCE_HOMEKIT, ConfigEntryDisabler
@@ -37,10 +38,10 @@ def advertisement(model=b"VELUX Gateway\x00", *, host="192.0.2.10", port=12345, 
 async def test_raw_homekit_txt_native_match_and_cloud_confirmation_preserve_local_routing(
     hass, model, paired
 ):
-    models = await loader.async_get_homekit(hass)
+    models, matchers = build_homekit_model_lookups(await loader.async_get_homekit(hass))
     info = info_from_service(advertisement(model, paired=paired))
     assert info.properties["md"] == model.decode()
-    match = async_get_homekit_discovery(models, {}, info.properties)
+    match = async_get_homekit_discovery(models, matchers, info.properties)
     assert match.domain == DOMAIN
     assert match.always_discover  # Native router continues to HomeKit Device for unpaired too.
     result = await hass.config_entries.flow.async_init(
@@ -56,15 +57,19 @@ async def test_raw_homekit_txt_native_match_and_cloud_confirmation_preserve_loca
         None,
         b"",
         b"Other",
+        b"VELUX Gateway-evil",
+        b"VELUX Gateway Pro",
+        b"VELUX Gatewayx",
+        b"VELUX Gatewa[y]",
         b"VELUX Gateway\x00suffix",
         b"VELUX\x00 Gateway",
         b"VELUX Gateway\x00\x00",
     ],
 )
 async def test_unverified_advertisement_cannot_start_cloud_hint(hass, model):
-    models = await loader.async_get_homekit(hass)
+    models, matchers = build_homekit_model_lookups(await loader.async_get_homekit(hass))
     info = info_from_service(advertisement(model))
-    assert async_get_homekit_discovery(models, {}, info.properties) is None
+    assert async_get_homekit_discovery(models, matchers, info.properties) is None
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_HOMEKIT}, data=info
     )
@@ -143,10 +148,10 @@ async def test_discovery_dedup_manual_race_and_disabled_existing_entry(hass):
 
 @pytest.mark.parametrize("paired", [False, True])
 async def test_native_raw_dispatch_keeps_homekit_device_route(hass, paired):
-    models = await loader.async_get_homekit(hass)
+    models, matchers = build_homekit_model_lookups(await loader.async_get_homekit(hass))
     zeroconf_types = await loader.async_get_zeroconf(hass)
     service = advertisement(paired=paired)
-    discovery = ZeroconfDiscovery(hass, Mock(), zeroconf_types, models, {}, service)
+    discovery = ZeroconfDiscovery(hass, Mock(), zeroconf_types, models, matchers, service)
     with patch(
         "homeassistant.components.zeroconf.discovery.discovery_flow.async_create_flow"
     ) as dispatch:

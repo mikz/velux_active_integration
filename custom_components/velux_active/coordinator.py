@@ -153,7 +153,7 @@ class VeluxCoordinator(DataUpdateCoordinator[VeluxSnapshot]):
                 )
             if (
                 self.topology_attempted_at is None
-                or monotonic() - self.topology_attempted_at >= 300
+                or monotonic() >= self.topology_attempted_at + 300
             ):
                 self.topology_attempted_at = monotonic()
                 try:
@@ -215,7 +215,7 @@ class VeluxCoordinator(DataUpdateCoordinator[VeluxSnapshot]):
             not self.refreshing
             and self.last_update_success
             and self.topology_observed_at is not None
-            and 0 <= monotonic() - self.topology_observed_at < 300
+            and self.topology_observed_at <= monotonic() < self.topology_observed_at + 300
             and not self.topology_failed
             and device_id not in self.api.inventory_ids
             and device_id not in self.api.status_presence
