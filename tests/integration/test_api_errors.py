@@ -378,8 +378,9 @@ async def test_http_date_retry_after_uses_once_derived_monotonic_deadline(respon
     "header", ["Thu, 01 Oct 2020 00:00:00 GMT", "Thu, 01 Oct 2020 00:00:00", "-1", "1" * 19]
 )
 async def test_past_dates_and_bounded_parser_fallback_still_establish_deadline(
-    response_api, header
+    response_api, header, monkeypatch
 ):
+    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": header})
     with pytest.raises(RateLimitError) as error:

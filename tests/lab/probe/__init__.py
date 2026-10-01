@@ -771,7 +771,7 @@ async def statistics(hass, entry):
 
     from homeassistant.components.recorder import get_instance
     from homeassistant.components.recorder.statistics import get_metadata, statistics_during_period
-    from homeassistant.components.recorder.tasks import StatisticsTask
+    from homeassistant.components.recorder.tasks import StatisticsTask, SynchronizeTask
     from homeassistant.util import dt as dt_util
 
     identifiers = {
@@ -780,11 +780,15 @@ async def statistics(hass, entry):
         "sensor.synthetic_legacy_lab_switch_battery_level": (3724, "mV"),
     }
     recorder = get_instance(hass)
-    await recorder.async_block_till_done()
-    metadata = await hass.async_add_executor_job(
+    # An empty queue can mean the worker already popped a task. Queue an
+    # unconditional native commit barrier instead of inferring completion.
+    committed = hass.loop.create_future()
+    recorder.queue_task(SynchronizeTask(committed))
+    await committed
+    metadata = await recorder.async_add_executor_job(
         lambda: get_metadata(hass, statistic_ids=set(identifiers))
     )
-    history = await hass.async_add_executor_job(
+    history = await recorder.async_add_executor_job(
         statistics_during_period,
         hass,
         datetime(1970, 1, 1, tzinfo=UTC),
@@ -813,20 +817,22 @@ async def statistics(hass, entry):
     )
     now = dt_util.utcnow()
     period = now.replace(minute=now.minute // 5 * 5, second=0, microsecond=0)
+    committed = hass.loop.create_future()
     recorder.queue_task(StatisticsTask(period, False))
-    await recorder.async_block_till_done()
-    raw = await hass.async_add_executor_job(
+    recorder.queue_task(SynchronizeTask(committed))
+    await committed
+    raw = await recorder.async_add_executor_job(
         statistics_during_period, hass, period, None, set(identifiers), "5minute", None, {"mean"}
     )
     assert not raw
     percent = er.async_get(hass).async_get_entity_id(
         "sensor", "velux_active", "lab-switch_battery_percent"
     )
-    control = await hass.async_add_executor_job(
+    control = await recorder.async_add_executor_job(
         statistics_during_period, hass, period, None, {percent}, "5minute", None, {"mean"}
     )
     assert len(control[percent]) == 1 and abs(control[percent][0]["mean"] - 82) < 0.00001
-    after = await hass.async_add_executor_job(
+    after = await recorder.async_add_executor_job(
         lambda: get_metadata(hass, statistic_ids=set(identifiers))
     )
     assert metadata == after
