@@ -7,10 +7,15 @@ not a VELUX guarantee that every possible account configuration is complete.
 on January 16, 2025 that its related unfiltered endpoint returns all account
 homes. The same thread documents nested status errors during an outage. Those
 facts support the interpretation and error handling; they do not prove VELUX's
-per-home module completeness. Final M7 must separately corroborate VELUX's
-explicit-list shape and privately compare the reported IDs with known account
-registry inventory, reporting only overlap/missing/extra counts. That direct
-corroboration remains open.
+per-home module completeness. Owner final isolated frozen-artifact smoke
+corroborated explicit module arrays in the VELUX response. Its private comparison
+with historical HA registry IDs was partial: known 9 / observed 7 / overlap 7 /
+missing 2 / extra 0. See the current evidence index in
+[PLATINUM_ACCEPTANCE.md](PLATINUM_ACCEPTANCE.md) and the safe owner receipt
+`artifacts/m7-real-cloud-final-owner.json`. The two historical absences are
+unexplained, not proven stale devices or cloud omissions. Matching counts do not
+prove exact topology/status ID-set equality or provider completeness. No extra cloud requests or removal experiment were used to classify the two
+absences; they remain unexplained.
 
 An accepted inventory has an explicit homes array and an explicit modules array
 for every home. All home IDs and account-wide module IDs must be nonempty strings
@@ -57,4 +62,6 @@ Named source evidence includes
 `test_native_removal_preserves_other_owner_and_reappearance`,
 `test_removal_is_denied_while_refresh_has_only_partial_observations`, and
 `test_status_presence_veto_survives_malformed_siblings_and_nested_errors`.
-Both-version installed artifact acceptance remains M7.
+Both final installed targets passed the topology/removal scenarios indexed in
+PLATINUM_ACCEPTANCE.md. A later changed runtime pair must repeat these gates;
+final adversarial acceptance remains pending.

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from math import ceil, inf, isfinite, nextafter
 from time import monotonic
-from typing import cast
+from typing import NoReturn, cast
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -226,6 +226,9 @@ class VeluxActiveAPI:
                 headers=headers,
                 timeout=ClientTimeout(total=20),
             ) as response:
+                # Headers are authoritative even if the body is truncated or unreadable.
+                if response.status == 429:
+                    self._raise_rate_limit(response.headers.get("Retry-After", "60"))
                 try:
                     # aiohttp uses the JSON decoder: its values have this recursive shape.
                     payload = cast(JSON, await response.json(content_type=None))
@@ -233,14 +236,8 @@ class VeluxActiveAPI:
                     payload = None
                 error = payload.get("error") if isinstance(payload, dict) else None
                 code = error.get("code") if isinstance(error, dict) else error
-                if response.status == 429 or code in (26, "26"):
-                    duration = retry_delay(response.headers.get("Retry-After", "60"))
-                    now = monotonic()
-                    deadline = now + duration
-                    if deadline - now < duration:
-                        deadline = nextafter(deadline, inf)
-                    self._rate_limit.deadline = max(self._retry_at, deadline)
-                    raise RateLimitError(max(1, ceil(self._retry_at - now)))
+                if code in (26, "26"):
+                    self._raise_rate_limit(response.headers.get("Retry-After", "60"))
                 if response.status in (401, 403) or code in (
                     1,
                     2,
@@ -257,6 +254,15 @@ class VeluxActiveAPI:
                 return payload
         except (ClientError, TimeoutError) as err:
             raise APIConnectionError("Cannot reach the VELUX cloud API") from err
+
+    def _raise_rate_limit(self, header: str) -> NoReturn:
+        duration = retry_delay(header)
+        now = monotonic()
+        deadline = now + duration
+        if deadline - now < duration:
+            deadline = nextafter(deadline, inf)
+        self._rate_limit.deadline = max(self._retry_at, deadline)
+        raise RateLimitError(max(1, ceil(self._retry_at - now)))
 
     async def _token_request(self, data: dict[str, str]) -> AuthToken:
         payload = await self._request(

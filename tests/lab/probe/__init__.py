@@ -209,6 +209,12 @@ async def cleanup(hass, entry):
     }
 
 
+def assert_native_retry_observed(states):
+    """A quiet HTTP trace is proof only after an actual native retry occurred."""
+    expected = ["setup_in_progress", "setup_retry", "setup_in_progress", "setup_retry"]
+    assert states[:4] == expected, f"Native retry not observed: {states}"
+
+
 async def setup_retry(hass, entry, topology_failure):
     """Native setup/retry and corrective flows use real HTTP, fresh credentials."""
     from custom_components.velux_active.const import async_rate_limit_state
@@ -219,65 +225,78 @@ async def setup_retry(hass, entry, topology_failure):
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert not old._listeners and old._unsub_refresh is None
-    changes = {"retry_after": "99999"}
-    changes["topology_outage" if topology_failure else "outage"] = 429
-    await configure(hass, changes)
-    before = list((await configure(hass, {}))["requests"])
-    with logical_time(clock):
-        assert not await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
-        assert entry.state is ConfigEntryState.SETUP_RETRY
-        deadline = async_rate_limit_state(hass).deadline
-        first = list((await configure(hass, {}))["requests"])
-        expected = [["/oauth2/token", "password"]]
-        if topology_failure:
-            expected.append(["/api/homesdata", None])
-        assert first[len(before) :] == expected
-    with logical_time(clock + 6):
-        # HA's retry timer remains real and invokes the ordinary setup path.
-        await asyncio.sleep(6)
-        await hass.async_block_till_done()
-        assert entry.state is ConfigEntryState.SETUP_RETRY
-        assert (await configure(hass, {}))["requests"] == first
-        assert async_rate_limit_state(hass).deadline == deadline
-        flow = await hass.config_entries.flow.async_init(
-            "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            flow["flow_id"], {"username": original["username"], "password": "replacement"}
-        )
-        assert result["errors"] == {"base": "cannot_connect"} and entry.data == original
-        hass.config_entries.flow.async_abort(result["flow_id"])
-        assert (await configure(hass, {}))["requests"] == first
-    await configure(hass, {"outage": 0, "topology_outage": 0, "password": "replacement"})
-    with logical_time(deadline):
-        flow = await hass.config_entries.flow.async_init(
-            "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            flow["flow_id"], {"username": original["username"], "password": "replacement"}
-        )
-        assert result["type"] == "abort" and result["reason"] == "reconfigure_successful"
-        await hass.async_block_till_done()
-        assert entry.state is ConfigEntryState.LOADED
-        assert entry.data["password"] == "replacement"
-        assert entry.runtime_data is not old and entry.runtime_data.last_update_success
-        await configure(hass, {"password": original["password"]})
-        flow = await hass.config_entries.flow.async_init(
-            "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
-        )
-        result = await hass.config_entries.flow.async_configure(flow["flow_id"], original)
-        assert result["reason"] == "reconfigure_successful"
-        await hass.async_block_till_done()
-        assert entry.data == original
-    return {
-        "initial_endpoint": "topology" if topology_failure else "authentication",
-        "initial_request_trace": expected,
-        "native_retry_after_six_seconds_no_http": True,
-        "blocked_corrective_flow_preserves_credentials": True,
-        "expiry_accepts_fresh_credentials": True,
-        "requires_process_restart": True,
-    }
+    states = []
+
+    def observe():
+        states.append(entry.state.value)
+
+    unsubscribe = entry.async_on_state_change(observe)
+    try:
+        changes = {"retry_after": "99999"}
+        changes["topology_outage" if topology_failure else "outage"] = 429
+        await configure(hass, changes)
+        before = list((await configure(hass, {}))["requests"])
+        with logical_time(clock):
+            assert not await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
+            assert entry.state is ConfigEntryState.SETUP_RETRY
+            deadline = async_rate_limit_state(hass).deadline
+            first = list((await configure(hass, {}))["requests"])
+            expected = [["/oauth2/token", "password"]]
+            if topology_failure:
+                expected.append(["/api/homesdata", None])
+            assert first[len(before) :] == expected
+        with logical_time(clock + 6):
+            # HA's retry timer remains real and invokes the ordinary setup path.
+            await asyncio.sleep(6)
+            await hass.async_block_till_done()
+            assert entry.state is ConfigEntryState.SETUP_RETRY
+            assert_native_retry_observed(states)
+            retry_states = list(states)
+            assert (await configure(hass, {}))["requests"] == first
+            assert async_rate_limit_state(hass).deadline == deadline
+            flow = await hass.config_entries.flow.async_init(
+                "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
+            )
+            result = await hass.config_entries.flow.async_configure(
+                flow["flow_id"], {"username": original["username"], "password": "replacement"}
+            )
+            assert result["errors"] == {"base": "cannot_connect"} and entry.data == original
+            hass.config_entries.flow.async_abort(result["flow_id"])
+            assert (await configure(hass, {}))["requests"] == first
+        await configure(hass, {"outage": 0, "topology_outage": 0, "password": "replacement"})
+        with logical_time(deadline):
+            flow = await hass.config_entries.flow.async_init(
+                "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
+            )
+            result = await hass.config_entries.flow.async_configure(
+                flow["flow_id"], {"username": original["username"], "password": "replacement"}
+            )
+            assert result["type"] == "abort" and result["reason"] == "reconfigure_successful"
+            await hass.async_block_till_done()
+            assert entry.state is ConfigEntryState.LOADED
+            assert entry.data["password"] == "replacement"
+            assert entry.runtime_data is not old and entry.runtime_data.last_update_success
+            await configure(hass, {"password": original["password"]})
+            flow = await hass.config_entries.flow.async_init(
+                "velux_active", context={"source": "reconfigure", "entry_id": entry.entry_id}
+            )
+            result = await hass.config_entries.flow.async_configure(flow["flow_id"], original)
+            assert result["reason"] == "reconfigure_successful"
+            await hass.async_block_till_done()
+            assert entry.data == original
+        return {
+            "initial_endpoint": "topology" if topology_failure else "authentication",
+            "initial_request_trace": expected,
+            "native_retry_after_six_seconds_no_http": True,
+            "native_retry_state_transitions": retry_states,
+            "observed_setup_attempts": retry_states.count("setup_in_progress"),
+            "blocked_corrective_flow_preserves_credentials": True,
+            "expiry_accepts_fresh_credentials": True,
+            "requires_process_restart": True,
+        }
+    finally:
+        unsubscribe()
 
 
 async def topology(hass, entry):

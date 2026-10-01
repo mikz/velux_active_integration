@@ -429,3 +429,58 @@ async def test_inflight_shorter_throttle_does_not_shorten_shared_deadline(
             with pytest.raises(RateLimitError):
                 await first._request("/blocked")
         assert calls == ["/slow", "/long"]
+
+
+@pytest.mark.parametrize("body", [b"{}", b"invalid-json"])
+async def test_truncated_http_429_registers_shared_deadline_before_body(socket_enabled, body):
+    """An incomplete body cannot turn a header-level throttle into an outage."""
+    from velux_active_client import RateLimitState
+
+    calls = []
+
+    async def respond(reader, writer):
+        calls.append(await reader.readuntil(b"\r\n\r\n"))
+        writer.write(
+            b"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 99999\r\n"
+            b"Content-Length: 100\r\nConnection: close\r\n\r\n" + body
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(respond, "127.0.0.1", 0)
+    async with server, aiohttp.ClientSession() as session:
+        address = server.sockets[0].getsockname()
+        shared = RateLimitState()
+        first = VeluxActiveAPI(
+            session, base_url=f"http://127.0.0.1:{address[1]}", rate_limit_state=shared
+        )
+        with pytest.raises(RateLimitError) as limited:
+            await first.authenticate(USERNAME, PASSWORD)
+        assert limited.value.retry_after >= 99999
+        assert shared.deadline > 0
+        second = VeluxActiveAPI(
+            session, base_url=f"http://127.0.0.1:{address[1]}", rate_limit_state=shared
+        )
+        # A second consumer with an existing valid token must not reach another endpoint.
+        second.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+        with pytest.raises(RateLimitError):
+            await second.get_home_data()
+        assert len(calls) == 1 and calls[0].startswith(b"POST /oauth2/token ")
+        assert first._credentials is None
+        assert first.auth_token is None
+        assert second.auth_token.access_token == "synthetic"
+
+
+@pytest.mark.parametrize("code", [26, "26"])
+async def test_json_rate_limit_code_preserves_shared_full_deadline(response_api, monkeypatch, code):
+    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
+    state, calls, api = response_api
+    state.update(payload={"error": {"code": code}}, headers={"Retry-After": "99999"})
+    with pytest.raises(RateLimitError) as limited:
+        await api.authenticate(USERNAME, PASSWORD)
+    assert limited.value.retry_after == 99999 and api._retry_at == 100999.0
+    assert api._credentials is None and api.auth_token is None
+    with pytest.raises(RateLimitError):
+        await api.authenticate(USERNAME, PASSWORD)
+    assert calls == ["/oauth2/token"]

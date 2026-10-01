@@ -12,14 +12,18 @@ command, integration release, or merge is authorized by this plan.
 
 ## Current implementation status
 
-Owner validation passed the locally achievable source and installed gates at frozen runtime candidate `b2487c5`: 256 tests + 37 subtests, strict typing across 13 modules, both HA targets 25/25 on the same local ZIP/wheel, isolated real-cloud smoke and native browser inspection. Full persistent Astra/max adversarial acceptance remains pending. The [current acceptance matrix](PLATINUM_ACCEPTANCE.md) indexes exact receipts and qualified inventory evidence. Earlier checkpoint sections retain historical limitations. Public distribution, ordinary HACS installation, Core placement/admission and official recognition remain user-deferred or external, not exemptions.
+Owner validation passed the locally achievable source and installed gates at frozen runtime candidate `b2487c5`: 256 tests + 37 subtests, strict typing across 13 modules, both HA targets 25/25 on the same local ZIP/wheel, isolated real-cloud smoke and native browser inspection. Formal Astra/max review required corrections; their source and artifact replay
+gates remain pending. Earlier owner evidence binds the previous frozen pair. The [current acceptance matrix](PLATINUM_ACCEPTANCE.md) indexes exact receipts and qualified inventory evidence. Earlier checkpoint sections retain historical limitations. Public distribution, ordinary HACS installation, Core placement/admission and official recognition remain user-deferred or external, not exemptions.
 
 ## Ownership and review
 
 The sole implementation owner is the existing GPT-6.1 Sol/medium implementor.
 The owner orchestrator is read-only and retains reproduction and acceptance.
-`/root/platinum_reviewer` is the persistent Astra/max adversarial reviewer for
-plan conformance and implementation, reused under the user's explicit direction.
+`/root/platinum_reviewer` is the persistent read-only Astra/max technical advisor
+for bounded framework and plan questions through the consult-advisor workflow.
+`/root/platinum_final_review` is the dedicated read-only GPT-6 Astra/max formal
+reviewer for adversarial code review and conformance. The orchestrating owner
+retains acceptance; an advisor consultation does not substitute for formal review.
 Route labeled ambiguities with revision/evidence and a reply target through the
 consult-advisor workflow. Do not create duplicate reviewers or parallel owners.
 After each bounded milestone, report changed paths, performed checks, remaining
