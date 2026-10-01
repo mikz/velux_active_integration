@@ -77,7 +77,7 @@ Publisher configuration/access and environment protection have not been verified
 The metadata links to the actual public source repository; versioned package
 source will be identified by the corresponding reviewed client Git tag.
 
-Freeze and adversarially review the M3 client before tagging/publishing 0.1.0.
+For a future separately authorized publication, freeze and adversarially review the client before tagging/publishing 0.1.0. Publication remains deferred by the user; the current phase tests the local wheel only.
 Use Git tags for public versioned client source; **do not create a client GitHub
 Release**, which could become HACS latest. The existing integration release job
 also excludes `client-v*` tags. Package publication does not authorize an

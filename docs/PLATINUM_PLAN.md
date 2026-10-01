@@ -10,6 +10,10 @@ award an official Home Assistant tier. Core submission and upstream acceptance
 have separate gates below. No production deployment, entry enablement, actuator
 command, integration release, or merge is authorized by this plan.
 
+## Current implementation status
+
+Owner validation passed the locally achievable source and installed gates at frozen runtime candidate `b2487c5`: 256 tests + 37 subtests, strict typing across 13 modules, both HA targets 25/25 on the same local ZIP/wheel, isolated real-cloud smoke and native browser inspection. Full persistent Astra/max adversarial acceptance remains pending. The [current acceptance matrix](PLATINUM_ACCEPTANCE.md) indexes exact receipts and qualified inventory evidence. Earlier checkpoint sections retain historical limitations. Public distribution, ordinary HACS installation, Core placement/admission and official recognition remain user-deferred or external, not exemptions.
+
 ## Ownership and review
 
 The sole implementation owner is the existing GPT-6.1 Sol/medium implementor.
@@ -45,10 +49,10 @@ upstream acceptance. Record evidence and receipts outside installed payload.
 
 | Finding | Observed gap | Required closure | Current state |
 | --- | --- | --- | --- |
-| R1-boolean | Lists/objects/empty strings coerce to dry; string `false` coerces to wet, and refresh succeeds. | Validate supplied booleans at the wire boundary; invalid data causes controlled API failure, unavailable entities and failed refresh; missing/null remain unknown; valid booleans and recovery work. | Open until M0 tests and owner validation. |
-| R1-identity-oracle | Existing legacy test accepts a rain unique-ID mutation with an absent original live state and a duplicate. | Seed true legacy registry before first candidate setup; assert live original states/transitions, complete inventory and no duplicates across reload, cold restart and reauth; deliberate mutation must fail. | Weak oracle, not a proven identity migration regression. Open until M0/M7. |
-| R1-device-logs | Reachable false/false/true changes availability without device outage/recovery logs. | Deduplicate per-device/service INFO transitions, retain native cloud logs, avoid per-entity spam. | Open until M0 native transition tests and owner validation. |
-| R1-archive-smoke | Existing `.lab/real_cloud_check.py` imports checkout source. | Final frozen-ZIP isolated process, checked module origins/member/dependency hashes, no checkout fallback; only safe auth/topology/status/token-refresh counts/booleans. | SOURCE ONLY; stays open until final M7 archive smoke. M0 runner preparation cannot close it. |
+| R1-boolean | Lists/objects/empty strings coerce to dry; string `false` coerces to wet, and refresh succeeds. | Validate supplied booleans at the wire boundary; invalid data causes controlled API failure, unavailable entities and failed refresh; missing/null remain unknown; valid booleans and recovery work. | Closed by owner source and final installed validation; full audit pending. |
+| R1-identity-oracle | Existing legacy test accepts a rain unique-ID mutation with an absent original live state and a duplicate. | Seed true legacy registry before first candidate setup; assert live original states/transitions, complete inventory and no duplicates across reload, cold restart and reauth; deliberate mutation must fail. | Weak oracle, not a proven identity migration regression. Owner validated mutation-sensitive source and final legacy artifact scenarios; full audit pending. |
+| R1-device-logs | Reachable false/false/true changes availability without device outage/recovery logs. | Deduplicate per-device/service INFO transitions, retain native cloud logs, avoid per-entity spam. | Closed by owner source and final installed transition validation, including omission; full audit pending. |
+| R1-archive-smoke | Existing `.lab/real_cloud_check.py` imports checkout source. | Final frozen-ZIP isolated process, checked module origins/member/dependency hashes, no checkout fallback; only safe auth/topology/status/token-refresh counts/booleans. | Original smoke was SOURCE ONLY. Owner final isolated ZIP/wheel cloud smoke closes artifact proof; qualified partial registry corroboration is recorded separately. Full audit pending. |
 
 ## Milestones and acceptance
 

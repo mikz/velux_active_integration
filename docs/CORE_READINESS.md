@@ -34,12 +34,12 @@ hint establishes neither account ownership nor transport trust.
 | --- | --- |
 | Client ownership and license | Standalone same-repo project, MIT license, typed public API, tests, sdist/wheel and scoped release workflow prepared. |
 | Public dependency | User-deferred. Exact public immutable version and clean ordinary HA/HACS resolution must be verified before an installable integration release or Core submission. |
-| Protocol support | Local HTTP regressions and prior source smoke exist. Final frozen-wheel real-cloud proof and safe inventory corroboration remain M7. No provider compatibility guarantee is claimed. |
+| Protocol support | Strict HTTP regressions, both final installed targets and isolated frozen-wheel real-cloud proof passed owner validation. Registry corroboration is partial (9 known / 7 observed / 7 overlap / 2 missing / 0 extra); no provider completeness or compatibility guarantee is claimed. Final adversarial audit remains pending. |
 | Domain and placement | Proposal above; upstream approval pending. Do not change custom-domain storage/unique IDs without a separately accepted migration. |
 | Core manifest | Port under `homeassistant/components` only after placement acceptance; remove custom-only version/layout conventions and use approved documentation/requirements/ownership. |
 | Official branding | Local custom assets have known provenance. Official brands repository contribution/admission is a separate upstream gate. |
 | Native Core tests | Port synthetic protocol, flow, lifecycle, identity, discovery, privacy and dynamic topology tests to Core's native test harness and accepted fixtures. Custom pytest compatibility is not Core test admission. |
-| Strict typing registration | Register the accepted Core domain in Core's `.strict-typing`; the local strict twelve-module check does not edit or certify Core. |
+| Strict typing registration | Register the accepted Core domain in Core's `.strict-typing`; the local strict thirteen-module check does not edit or certify Core. |
 | Website documentation | Prepare an upstream `home-assistant.io` integration page with setup, credential renewal, supported read-only models/functions, availability/update cadence, examples and limitations. Current README is source material, not an accepted website page. |
 | Quality recognition | Submit exact rule evidence after the locally achievable final audit. Official tier and Core inclusion require upstream acceptance, never a custom manifest claim. |
 
