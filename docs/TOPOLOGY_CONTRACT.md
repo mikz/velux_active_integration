@@ -12,7 +12,7 @@ corroborated explicit module arrays in the VELUX response. Its private compariso
 with historical HA registry IDs was partial: known 9 / observed 7 / overlap 7 /
 missing 2 / extra 0. See the current evidence index in
 [PLATINUM_ACCEPTANCE.md](PLATINUM_ACCEPTANCE.md) and the safe owner receipt
-`artifacts/m7-real-cloud-final-owner.json`. The two historical absences are
+`artifacts/m7-real-cloud-correction-owner.json`. The two historical absences are
 unexplained, not proven stale devices or cloud omissions. Matching counts do not
 prove exact topology/status ID-set equality or provider completeness. No extra cloud requests or removal experiment were used to classify the two
 absences; they remain unexplained.
@@ -64,4 +64,4 @@ Named source evidence includes
 `test_status_presence_veto_survives_malformed_siblings_and_nested_errors`.
 Both final installed targets passed the topology/removal scenarios indexed in
 PLATINUM_ACCEPTANCE.md. A later changed runtime pair must repeat these gates;
-final adversarial acceptance remains pending.
+formal review PASS and owner acceptance cover the locally achievable scope.

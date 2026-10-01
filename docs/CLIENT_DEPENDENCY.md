@@ -10,6 +10,17 @@
 This is the M2b comparison checkpoint, dated 2026-10-01. The integration remains
 Custom. No package version is claimed published or accepted by Home Assistant.
 
+## Current local acceptance
+
+The exact local wheel and integration ZIP passed owner validation on both HA
+targets and in the isolated real-cloud runner. Formal reviewer
+`/root/platinum_final_review` returned REVIEW PASS at runtime `ba8def5`; the
+owner accepted the locally achievable engineering scope. The
+[acceptance index](PLATINUM_ACCEPTANCE.md) binds the exact wheel, payload hashes,
+non-editable origins, manifest pin and receipts. This does not close public
+publication, ordinary HACS installation or Core admission. Future publication
+instructions below remain preparation for separately authorized work.
+
 ## Current reusable clients
 
 [pyatmo 9.9.1](https://github.com/jabesq-org/pyatmo/releases/tag/v9.9.1)

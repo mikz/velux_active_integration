@@ -12,8 +12,21 @@ command, integration release, or merge is authorized by this plan.
 
 ## Current implementation status
 
-Owner validation passed the locally achievable source and installed gates at frozen runtime candidate `b2487c5`: 256 tests + 37 subtests, strict typing across 13 modules, both HA targets 25/25 on the same local ZIP/wheel, isolated real-cloud smoke and native browser inspection. Formal Astra/max review required corrections; their source and artifact replay
-gates remain pending. Earlier owner evidence binds the previous frozen pair. The [current acceptance matrix](PLATINUM_ACCEPTANCE.md) indexes exact receipts and qualified inventory evidence. Earlier checkpoint sections retain historical limitations. Public distribution, ordinary HACS installation, Core placement/admission and official recognition remain user-deferred or external, not exemptions.
+The owner accepted the locally achievable engineering scope at frozen correction
+candidate `ba8def5`: 267 tests + 37 subtests, strict typing across 13 modules,
+both HA targets 25/25 on the same local ZIP/wheel, isolated real-cloud smoke,
+native browser inspection and verified cleanup. The dedicated formal reviewer
+`/root/platinum_final_review` (GPT-6 Astra/max) returned REVIEW PASS for the
+runtime/harness and current documentation: all five final findings closed,
+with no new actionable issues. `/root/platinum_reviewer` remains the technical
+advisor; the owner retains acceptance.
+
+The [current acceptance matrix](PLATINUM_ACCEPTANCE.md) indexes exact receipts
+and qualified inventory evidence. Earlier receipts retain their own pair and
+historical limitations. Six native history notices remain expected; the two
+historical inventory absences remain unexplained. Public distribution, ordinary
+HACS installation, Core placement/admission and official recognition remain
+user-deferred or external, not exemptions or completed gates.
 
 ## Ownership and review
 
@@ -53,10 +66,10 @@ upstream acceptance. Record evidence and receipts outside installed payload.
 
 | Finding | Observed gap | Required closure | Current state |
 | --- | --- | --- | --- |
-| R1-boolean | Lists/objects/empty strings coerce to dry; string `false` coerces to wet, and refresh succeeds. | Validate supplied booleans at the wire boundary; invalid data causes controlled API failure, unavailable entities and failed refresh; missing/null remain unknown; valid booleans and recovery work. | Closed by owner source and final installed validation; full audit pending. |
-| R1-identity-oracle | Existing legacy test accepts a rain unique-ID mutation with an absent original live state and a duplicate. | Seed true legacy registry before first candidate setup; assert live original states/transitions, complete inventory and no duplicates across reload, cold restart and reauth; deliberate mutation must fail. | Weak oracle, not a proven identity migration regression. Owner validated mutation-sensitive source and final legacy artifact scenarios; full audit pending. |
-| R1-device-logs | Reachable false/false/true changes availability without device outage/recovery logs. | Deduplicate per-device/service INFO transitions, retain native cloud logs, avoid per-entity spam. | Closed by owner source and final installed transition validation, including omission; full audit pending. |
-| R1-archive-smoke | Existing `.lab/real_cloud_check.py` imports checkout source. | Final frozen-ZIP isolated process, checked module origins/member/dependency hashes, no checkout fallback; only safe auth/topology/status/token-refresh counts/booleans. | Original smoke was SOURCE ONLY. Owner final isolated ZIP/wheel cloud smoke closes artifact proof; qualified partial registry corroboration is recorded separately. Full audit pending. |
+| R1-boolean | Lists/objects/empty strings coerce to dry; string `false` coerces to wet, and refresh succeeds. | Validate supplied booleans at the wire boundary; invalid data causes controlled API failure, unavailable entities and failed refresh; missing/null remain unknown; valid booleans and recovery work. | Closed by owner source and final installed validation; formal review PASS; owner accepted. |
+| R1-identity-oracle | Existing legacy test accepts a rain unique-ID mutation with an absent original live state and a duplicate. | Seed true legacy registry before first candidate setup; assert live original states/transitions, complete inventory and no duplicates across reload, cold restart and reauth; deliberate mutation must fail. | Weak oracle, not a proven identity migration regression. Owner validated mutation-sensitive source and final legacy artifact scenarios; formal review PASS; owner accepted. |
+| R1-device-logs | Reachable false/false/true changes availability without device outage/recovery logs. | Deduplicate per-device/service INFO transitions, retain native cloud logs, avoid per-entity spam. | Closed by owner source and final installed transition validation, including omission; formal review PASS; owner accepted. |
+| R1-archive-smoke | Existing `.lab/real_cloud_check.py` imports checkout source. | Final frozen-ZIP isolated process, checked module origins/member/dependency hashes, no checkout fallback; only safe auth/topology/status/token-refresh counts/booleans. | Original smoke was SOURCE ONLY. Owner final isolated ZIP/wheel cloud smoke closes artifact proof; qualified partial registry corroboration is recorded separately. Formal review PASS; owner accepted. |
 
 ## Milestones and acceptance
 
