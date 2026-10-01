@@ -28,6 +28,13 @@ historical inventory absences remain unexplained. Public distribution, ordinary
 HACS installation, Core placement/admission and official recognition remain
 user-deferred or external, not exemptions or completed gates.
 
+The subsequent CI `4319b077` failure was a reproduced fractional clock error in
+the lab oracle. A shared native integer baseline and deterministic regression
+strengthen exact topology checkpoints without changing the accepted runtime or
+pair. Source validation now passes 268 tests + 37 subtests. The current harness
+replay/review outcome is tracked in `artifacts/m7-integer-clock-harness-replay.json`
+and PR 22; the acceptance matrix retains the dated runtime checkpoint separately.
+
 ## Ownership and review
 
 The sole implementation owner is the existing GPT-6.1 Sol/medium implementor.

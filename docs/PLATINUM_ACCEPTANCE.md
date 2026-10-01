@@ -1,5 +1,12 @@
 # P2 rule acceptance matrix
 
+The rule table and accepted runtime evidence below retain their reviewed
+`ba8def5` scope. A later documentation-head CI run exposed a fractional clock
+error in the topology test oracle, not a product removal defect. Current
+strengthened-harness replay and formal delta-review status is recorded in
+`artifacts/m7-integer-clock-harness-replay.json` and
+[draft PR 22](https://github.com/mikz/velux_active_integration/pull/22).
+
 There are 54 rules: 20 Bronze, 10 Silver, 21 Gold, 3 Platinum. Existing baseline evidence must survive P2; a row is not accepted until its gates and owner/adversarial review pass. Discovery is implemented. The cloud-only discovery-update-info exemption follows the reviewed current Core Sensibo precedent; no exemption closes publication or official recognition. Separate Core gates are in [the plan](PLATINUM_PLAN.md).
 
 | Tier | Rule | Acceptance evidence / milestone | P2 state |
@@ -59,7 +66,7 @@ There are 54 rules: 20 Bronze, 10 Silver, 21 Gold, 3 Platinum. Existing baseline
 | Platinum | `inject-websession` | Client accepts an injected aiohttp session without closing it; HA supplies async_get_clientsession. Native unload and artifact smoke tests cover lifecycle; no runtime session factory or custom installer. | Owner accepted; formal review PASS |
 | Platinum | `strict-typing` | Strict mypy checks every owned integration/client module with no blanket exclusions or Any leaks; tests/unit/test_typing.py verifies positive and negative typed consumers. | Owner accepted; formal review PASS |
 
-## Current cross-rule acceptance gates
+## Accepted runtime checkpoint (ba8def5, 2026-10-01)
 
 The owner has validated the frozen local candidate at `ba8def5d250e03ba0538babf1329c66c6871e84f`. The first formal Astra/max review required corrections. Owner validation of those corrections passed. `/root/platinum_final_review` (GPT-6 Astra/max, read-only formal reviewer) returned **REVIEW PASS** on runtime/harness `ba8def5` and the current documentation delta: all five findings closed, no new actionable issues. The owner accepted the locally achievable engineering scope. `/root/platinum_reviewer` remains the technical advisor, and the owner retains acceptance. The installed rule ledger remains frozen; these receipts are outside its payload.
 
@@ -76,7 +83,7 @@ The owner has validated the frozen local candidate at `ba8def5d250e03ba0538babf1
 | Browser | Owner inspected the final 9.4 native integration, gateway and window pages. `artifacts/m7-browser-correction-owner.json` binds the gateway screenshot and pair. Temporary preview and scoped Docker objects were removed. |
 | Owner / adversarial acceptance | Repeated owner reproduction and final source/artifact/browser checks passed. Formal Astra/max review passed and the owner accepted the locally achievable engineering scope; no official tier or Core admission is claimed. |
 
-## Final evidence index
+## Accepted runtime evidence index (ba8def5)
 
 - Source: 267 tests + 37 subtests, strict mypy on all 13 owned modules, Ruff check/format, config-flow 100% line and branch coverage, and every integration/client module above 95% combined coverage. `artifacts/source-coverage.json` records per-module results; minimum setup 95.92%, client 97.20%.
 - Frozen ZIP: `8cdc546b6e85afe1931cb55ff29d68035fec8984f354a68a1dc320a59f86ccc7`, exactly 19 tracked integration members. Frozen local wheel: `bc5d7bfe006af3389fa132e41663de82ad2d1da271c6240dcf657408783a4032`, four client payload members.
@@ -93,7 +100,25 @@ The owner has validated the frozen local candidate at `ba8def5d250e03ba0538babf1
 - Actual uploaded CI source artifact `11137519664` contains exactly `source-receipt.json` and `source-coverage.json`. The owner matched all nine explicit gate outcomes to source job `110195901428`, verified actual gate-environment tool versions and all 13 module coverage summaries, and independently checked 19 integration plus four client payload hashes and the exact pin. Failure/skipped prerequisite, unmeasured branch and changed/missing/pin-mismatched archive tests cannot produce a passing receipt. The collector/upload preserves failed jobs without environment dumps or raw logs.
 - Corrected local 9.3 and 9.4 receipts above share every preparation hash. Actual CI lab artifacts `11137654823` (9.3) and `11137654818` (9.4) independently prove the positive retry observations and all prior behavior; their generated recorder databases and wheel wrappers remain separately identified.
 
-### Final acceptance boundary
+### Strengthened harness evidence
+
+CI run `velux-lab-2026-9-3-4319b077` in Test `36809286490` failed the old
+fractional-epoch topology oracle. Native/real-HTTP reproduction at
+`147.42818356355824` proved that +900 was one ULP before the actual deadline;
++960 then accepted a later inventory and correctly cleared the presence veto.
+This supersedes the old probe's exact-checkpoint assurance, not the accepted
+runtime/pair or its cloud/browser proof. The failure artifact `11138992405` and
+`artifacts/fractional-topology-epoch-reproduction.log` retain the diagnosis.
+
+The shared native integer baseline and the new deterministic regression preserve
+all removal expectations. Source validation now passes **268 tests + 37 subtests**,
+strict mypy on 13 modules, Ruff and the unchanged per-module coverage gates.
+The strengthened probe records actual HTTP deltas and attempted/observed times
+at +600, +900, +960 and +1200 before testing their consequences. The dedicated
+receipt and PR above carry its current paired replay and review outcome; the
+older runtime receipts below retain their original hashes and scope.
+
+### Accepted runtime boundary
 
 Formal review PASS covers the 54-rule local engineering matrix, the corrected
 runtime/harness at `ba8def5d250e03ba0538babf1329c66c6871e84f`, and the current
