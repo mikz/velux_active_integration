@@ -1,0 +1,97 @@
+name: Test
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: '3.14.7'
+      - id: sync
+        run: uv sync --locked
+      - id: prepare
+        run: uv run python scripts/prepare_client_artifacts.py
+      - id: ruff
+        run: uv run ruff check .
+      - id: format
+        run: uv run ruff format --check .
+      - id: pytest
+        run: uv run pytest --cov=custom_components.velux_active --cov=velux_active_client --cov-branch --cov-report=term-missing --cov-report=json:artifacts/source-coverage.json
+      - id: coverage
+        run: uv run python scripts/check_coverage.py artifacts/source-coverage.json
+      - id: mypy
+        run: uv run mypy
+      - id: build
+        run: uv run python scripts/release.py build
+      - id: verify
+        run: uv run python scripts/release.py verify
+      - name: Write constrained source evidence
+        if: always()
+        run: |
+          if [ '${{ steps.sync.outcome }}' = 'success' ]; then
+            uv run --no-sync python -m scripts.source_receipt --outcomes '{"sync":"${{ steps.sync.outcome }}","prepare":"${{ steps.prepare.outcome }}","ruff":"${{ steps.ruff.outcome }}","format":"${{ steps.format.outcome }}","pytest":"${{ steps.pytest.outcome }}","coverage":"${{ steps.coverage.outcome }}","mypy":"${{ steps.mypy.outcome }}","build":"${{ steps.build.outcome }}","verify":"${{ steps.verify.outcome }}"}'
+          else
+            uv run --no-project --python 3.14.7 python -m scripts.source_receipt --outcomes '{"sync":"${{ steps.sync.outcome }}","prepare":"${{ steps.prepare.outcome }}","ruff":"${{ steps.ruff.outcome }}","format":"${{ steps.format.outcome }}","pytest":"${{ steps.pytest.outcome }}","coverage":"${{ steps.coverage.outcome }}","mypy":"${{ steps.mypy.outcome }}","build":"${{ steps.build.outcome }}","verify":"${{ steps.verify.outcome }}"}'
+          fi
+      - name: Upload source evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: source-evidence
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/source-receipt.json
+            artifacts/source-coverage.json
+  lab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        ha: ['2026.9.3', '2026.9.4']
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-docker-action@v5
+        with:
+          version: v29.4.0
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.14.7'
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uv sync --locked
+      - run: uv run python scripts/prepare_client_artifacts.py
+      - run: python scripts/release.py build
+      - run: uv run pytest scripts/generate_legacy_recorder.py -q
+      - run: python scripts/lab.py prepare --ha-version '${{ matrix.ha }}'
+      - run: python scripts/lab.py test --ha-version '${{ matrix.ha }}'
+      - name: Upload sanitized lab receipts and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: lab-${{ matrix.ha }}-receipts
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            artifacts/lab/*/sanitized.json
+            artifacts/lab/*/summary.json
+            artifacts/lab/*/scenarios.json
+            artifacts/lab/*/acceptance.json
+            artifacts/lab/*/prepared.json
+            artifacts/lab/*/compose.json
+            artifacts/lab/*/inspect.json
+            artifacts/lab/*/routes-ha.json
+            artifacts/lab/*/routes-runner.json
+            artifacts/lab/*/routes-simulator.json
+            artifacts/lab/*/cleanup-verification.json
+            artifacts/lab/*/runner.log
+            artifacts/lab/*/ha.log
+            artifacts/lab/*/simulator.log

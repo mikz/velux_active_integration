@@ -1,207 +1,161 @@
 # binary_sensor.py
 
-from datetime import datetime, timezone
 import logging
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
+    BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
-from .const import DOMAIN
+from .api import VeluxDevice, VeluxGatewayData, VeluxShutterData, VeluxSwitchData, VeluxWindowData
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
+from .entity import VeluxEntity, async_discover_entities
 
 _LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
-):
+    hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
+) -> bool:
     """Set up Velux Active binary sensors from a config entry."""
-    coordinator = hass.data[DOMAIN]["coordinator"]
-    binary_sensors = []
 
-    for home in hass.data[DOMAIN]["homes"]:
-        devices = coordinator.data[home]["devices"]
-        for device in devices:
-            if isinstance(device, VeluxGatewayData):
-                binary_sensors.extend(create_gateway_binary_sensors(coordinator, device))
-            elif isinstance(device, (VeluxWindowData, VeluxShutterData)):
-                binary_sensors.extend(create_cover_binary_sensors(coordinator, device))
-            elif isinstance(device, VeluxSwitchData):
-                binary_sensors.extend(create_switch_binary_sensors(coordinator, device))
+    def create(device: VeluxDevice) -> list[VeluxBinarySensor]:
+        coordinator = entry.runtime_data
+        if isinstance(device, VeluxGatewayData):
+            return create_gateway_binary_sensors(coordinator, device)
+        if isinstance(device, (VeluxWindowData, VeluxShutterData)):
+            return create_cover_binary_sensors(coordinator, device)
+        if isinstance(device, VeluxSwitchData):
+            return create_switch_binary_sensors(coordinator, device)
+        return []
 
-    async_add_entities(binary_sensors)
+    async_discover_entities(entry, async_add_entities, create)
 
     return True
 
-def create_gateway_binary_sensors(coordinator, device):
-    """Create binary sensors for Velux Gateway."""
-    sensors = []
-    device_name = f"Gateway {device.name}"
-    # Sensor for is_raining
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Is Raining",
-        attribute="is_raining",
+
+BINARY_SENSOR_DESCRIPTIONS = {
+    "is_raining": BinarySensorEntityDescription(
+        key="is_raining",
+        translation_key="is_raining",
+        name="Is Raining",
         device_class=BinarySensorDeviceClass.MOISTURE,
-    ))
-    # Sensor for locked
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Locked",
-        attribute="unlocked",
+    ),
+    "unlocked": BinarySensorEntityDescription(
+        key="unlocked",
+        translation_key="unlocked",
+        name="Locked",
         device_class=BinarySensorDeviceClass.LOCK,
-    ))
-    # Sensor for locking
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Locking",
-        attribute="locking",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    "locking": BinarySensorEntityDescription(
+        key="locking",
+        translation_key="locking",
+        name="Locking",
         device_class=BinarySensorDeviceClass.MOVING,
-    ))
-    # Sensor for calibrating
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Calibrating",
-        attribute="calibrating",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-    ))
-    # Sensor for busy
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Busy",
-        attribute="busy",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    "calibrating": BinarySensorEntityDescription(
+        key="calibrating",
+        translation_key="calibrating",
+        name="Calibrating",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    "busy": BinarySensorEntityDescription(
+        key="busy",
+        translation_key="busy",
+        name="Busy",
         device_class=BinarySensorDeviceClass.RUNNING,
-    ))
-    return sensors
-
-def create_cover_binary_sensors(coordinator, device):
-    """Create binary sensors for Velux Window or Shutter."""
-    sensors = []
-    device_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
-    # Sensor for reachable
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Reachable",
-        attribute="reachable",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    "reachable": BinarySensorEntityDescription(
+        key="reachable",
+        translation_key="reachable",
+        name="Reachable",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-    ))
-    # Sensor for silent
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Silent Mode",
-        attribute="silent",
-        device_class=BinarySensorDeviceClass.RUNNING,
-    ))
-    return sensors
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "silent": BinarySensorEntityDescription(
+        key="silent",
+        translation_key="silent",
+        name="Silent Mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+}
 
-def create_switch_binary_sensors(coordinator, device):
-    """Create binary sensors for Velux Switch."""
-    sensors = []
-    device_name = f"Switch {device.id[-4:]}"
-    # Sensor for reachable
-    sensors.append(VeluxBinarySensor(
-        coordinator,
-        device,
-        name=f"{device_name} Reachable",
-        attribute="reachable",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
-    ))
-    return sensors
 
-class VeluxBinarySensor(CoordinatorEntity, BinarySensorEntity):
+def create_gateway_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxGatewayData
+) -> list[VeluxBinarySensor]:
+    """Create sensors for Velux Gateway."""
+    return [
+        VeluxBinarySensor(coordinator, device, BINARY_SENSOR_DESCRIPTIONS[key])
+        for key in ("is_raining", "unlocked", "locking", "calibrating", "busy")
+    ]
+
+
+def create_cover_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxWindowData | VeluxShutterData
+) -> list[VeluxBinarySensor]:
+    """Create sensors for Velux Window or Shutter."""
+    return [
+        VeluxBinarySensor(coordinator, device, BINARY_SENSOR_DESCRIPTIONS[key])
+        for key in ("reachable", "silent")
+    ]
+
+
+def create_switch_binary_sensors(
+    coordinator: VeluxCoordinator, device: VeluxSwitchData
+) -> list[VeluxBinarySensor]:
+    """Create sensors for Velux Switch."""
+    return [VeluxBinarySensor(coordinator, device, BINARY_SENSOR_DESCRIPTIONS["reachable"])]
+
+
+class VeluxBinarySensor(VeluxEntity[VeluxDevice], BinarySensorEntity):
     """Representation of a Velux binary sensor."""
 
     def __init__(
         self,
-        coordinator,
-        device,
-        name,
-        attribute,
-        device_class=None,
-    ):
-        """Initialize the binary sensor."""
-        super().__init__(coordinator)
-        self._device_id = device.id
-        self._home = device.home
-        self._attr_unique_id = f"{device.id}_{attribute}"
-        self._attr_name = name
-        self._attribute = attribute
-        self._attr_device_class = device_class
+        coordinator: VeluxCoordinator,
+        device: VeluxDevice,
+        description: BinarySensorEntityDescription,
+    ) -> None:
+        """Initialize the binary sensor without changing legacy unique IDs."""
+        super().__init__(coordinator, device)
+        self.entity_description = description
+        self._attr_unique_id = f"{device.id}_{description.key}"
+        self._attribute = description.key
 
     @property
-    def device(self):
-        """Return the current device object from the coordinator data."""
-        devices = self.coordinator.data.get(self._home, {}).get("devices", [])
-        for dev in devices:
-            if dev.id == self._device_id:
-                return dev
-        return None
-
-    @property
-    def is_on(self):
+    def is_on(self) -> bool | None:
         """Return True if the binary sensor is on."""
         device = self.device
         if device:
-            value = getattr(device, self._attribute, None)
-            return bool(value) if value is not None else None
+            value: object = getattr(device, self._attribute, None)
+            return value if isinstance(value, bool) else None
         return None
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, int | None]:
         """Return additional state attributes."""
         device = self.device
         if device:
-            return {
-                "last_seen": device.last_seen
-            }
+            return {"last_seen": device.last_seen}
         return {}
 
     @property
-    def device_info(self):
-        """Return device information."""
-        device = self.device
-        if device:
-            # Determine the device type
-            device_type = getattr(device, 'type', device.type).lower()
-            # Check if the device is a Gateway
-            if device_type == 'nxg':
-                # For Gateway devices
-                device_name = device.name or 'Gateway'
-                manufacturer = getattr(device, 'manufacturer', 'Velux')
-                model = 'Gateway'
-                via_device = None  # Gateway is the root device
-            else:
-                # For other devices
-                manufacturer = getattr(device, 'manufacturer', 'Velux')
-                model = getattr(device, 'velux_type', device.type)
-                device_name = f"{model.capitalize()} {device.id[-4:]}"
-                # Reference the Gateway as the via_device
-                via_device = (DOMAIN, getattr(device, 'bridge', None))
-            device_info = {
-                "identifiers": {(DOMAIN, self._device_id)},
-                "name": device_name,
-                "manufacturer": manufacturer,
-                "model": model,
-                "sw_version": getattr(device, "firmware_revision", None),
-            }
-            if via_device:
-                device_info["via_device"] = via_device
-            return device_info
-        return None
-
-    @property
-    def available(self):
-        """Return True if entity is available."""
-        device = self.device
-        return device is not None and getattr(device, "reachable", True)
+    def available(self) -> bool:
+        """Connectivity stays available to report a disconnected device."""
+        if self._attribute == "reachable":
+            return self.coordinator.last_update_success and self.device is not None
+        return super().available

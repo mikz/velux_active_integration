@@ -1,0 +1,182 @@
+# Local Custom integration source-conformance ledger; final artifact acceptance is tracked
+# outside this payload in docs/PLATINUM_ACCEPTANCE.md. Official/Core recognition is separate.
+rules:
+  action-setup:
+    status: done
+    comment: async_setup owns registration; test_first_refresh_validates_setup_before_entities and test_action_is_registered_without_entry_and_survives_unload.
+  appropriate-polling:
+    status: done
+    comment: coordinator.py uses one-minute cloud polling and honors Retry-After; README Rain data and refresh, test_action_failure_backoff_and_automatic_recovery.
+  brands:
+    status: done
+    comment: Original MIT PNGs in brand/ with scripts/brand.py and assets/README.md; current HACS brands validator passes
+      local tree, hassfest passes, packaged lab checks served icon bytes/MIME.
+  common-modules:
+    status: done
+    comment: coordinator.py owns polling; entity.py owns common snapshot identity and availability; test_entities.py.
+  config-flow-test-coverage:
+    status: done
+    comment: test_cloud.py and test_quality.py cover user, reauth, reconfigure and failure branches; check_coverage.py requires
+      100% lines and branches.
+  config-flow:
+    status: done
+    comment: Native UI user/password renewal flows in config_flow.py; test_native_user_flow_distinguishes_authentication_from_outage.
+  dependency-transparency:
+    status: done
+    comment: Public MIT packages/velux-active-client owns the protocol; exact manifest pin and local wheel provenance in
+      CONTRIBUTING. Public distribution and ordinary HACS installation are user-deferred, not exemptions.
+  docs-actions:
+    status: done
+    comment: README Actions, triggers, and conditions and Rain data and refresh describe zero-argument refresh, completed
+      work and errors.
+  docs-triggers:
+    status: done
+    comment: README Actions, triggers, and conditions states no custom triggers and explains standard entity state triggers.
+  docs-conditions:
+    status: done
+    comment: README Actions, triggers, and conditions states no custom conditions and explains standard entity state conditions.
+  docs-high-level-description:
+    status: done
+    comment: README introduction describes read-only VELUX cloud functionality and entity platforms.
+  docs-installation-instructions:
+    status: done
+    comment: README Install or update contains HACS and manual installation steps and prerequisites.
+  docs-removal-instructions:
+    status: done
+    comment: README Remove describes entry, HACS/code removal and restart.
+  entity-event-setup:
+    status: done
+    comment: CoordinatorEntity supplies subscriptions in native lifecycle; test_failed_unload_preserves_resources_and_successful_unload_cancels_owned_work
+      and native pytest cleanup checks.
+  entity-unique-id:
+    status: done
+    comment: test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reauth verifies complete live original inventory; test_legacy_identity_oracle_rejects_deliberate_rain_unique_id_mutation rejects a duplicate-ID regression.
+  has-entity-name:
+    status: done
+    comment: entity.py sets has_entity_name, entity-only measurement names and cover name=None; test_missing_devices_and_measurements_never_retain_previous_snapshot.
+  runtime-data:
+    status: done
+    comment: Typed VeluxActiveConfigEntry alias in coordinator.py is used in setup/unload/platform signatures; tests exercise
+      entry.runtime_data.
+  test-before-configure:
+    status: done
+    comment: authenticate and get_home_data run before creating/updating entry; test_native_user_flow_distinguishes_authentication_from_outage
+      and renewal failure tests.
+  test-before-setup:
+    status: done
+    comment: First coordinator refresh precedes entity setup; test_first_refresh_validates_setup_before_entities covers auth
+      and transient failure.
+  unique-config-entry:
+    status: done
+    comment: manifest single_config_entry uses HA-native enforcement; test_single_entry_rejects_duplicate_user_flow.
+  action-exceptions:
+    status: done
+    comment: test_action_failure_backoff_and_automatic_recovery, test_action_authentication_failure_starts_reauth, and unload/cancellation
+      tests assert real errors.
+  config-entry-unloading:
+    status: done
+    comment: Native platform unloading, coordinator cleanup and entry-owned request cancellation; test_native_failed_unload_reports_framework_state_and_rejects_action
+      and successful unload test.
+  docs-configuration-parameters:
+    status: done
+    comment: README Installation and configuration parameters lists credentials, fixed polling, password renewal and single-account
+      limits.
+  docs-installation-parameters:
+    status: done
+    comment: README Installation and configuration parameters lists gateway/account, HA version and HTTPS prerequisites; no
+      local address or OAuth registration.
+  entity-unavailable:
+    status: done
+    comment: test_invalid_wire_rain_fails_native_refresh_and_recovers and test_omitted_known_device_logs_one_outage_and_recovery cover malformed/missing/disconnected observations and recovery.
+  integration-owner:
+    status: done
+    comment: manifest codeowners includes @mikz and issue_tracker links this repository.
+  log-when-unavailable:
+    status: done
+    comment: test_unknown_reachability_uses_effective_availability_transition and omission tests prove one anonymous device transition pair; native coordinator cloud logging remains separate.
+  parallel-updates:
+    status: done
+    comment: PARALLEL_UPDATES=0 in all three read-only coordinator platforms; shared refresh test proves one concurrent cloud
+      operation.
+  reauthentication-flow:
+    status: done
+    comment: test_account_renewal_rejects_switch_and_preserves_credentials_on_failures covers same-login renewal, invalid
+      auth, transient failure and recovery for both renewal flows.
+  test-coverage:
+    status: done
+    comment: Locked source CI runs branch coverage over all integration modules and check_coverage.py requires each module
+      above 95%; config_flow requires 100%.
+  devices:
+    status: done
+    comment: async_register_devices registers observed account devices and relationships; test_existing_device_home_move_keeps_original_live_entity preserves stable identity across home changes.
+  diagnostics:
+    status: done
+    comment: test_diagnostics_allowlist_omits_provider_credentials_names_and_errors and test_native_diagnostics_response_scopes_owned_data_and_export_metadata prove allowlisted data and scoped native export privacy; config-entry only.
+  discovery-update-info:
+    status: exempt
+    comment: Cloud transport uses a fixed endpoint; no discovered address is persisted or used.
+      test_discovery_confirmation_login_failure_recovery_and_no_lan_account_binding verifies changed-address rediscovery.
+      Current Core 2026.9.4 Sensibo quality ledger provides the same cloud-only exemption; see docs/DISCOVERY_EVIDENCE.md.
+  discovery:
+    status: done
+    comment: test_discovery.py exercises exact raw TXT routing, paired/unpaired HomeKit coexistence, confirmation, account validation and simultaneous native flow completion; see docs/DISCOVERY_EVIDENCE.md.
+  docs-data-update:
+    status: done
+    comment: README Data updates and availability documents separate 60-second status and 300-second topology attempts, failure retention and manual batches.
+  docs-examples:
+    status: done
+    comment: README Examples provides a read-only notification automation with explicit unknown/unavailable handling.
+  docs-known-limitations:
+    status: done
+    comment: README Known limitations documents cloud rain delay, read-only scope, single account, unsupported types and deferred distribution.
+  docs-supported-devices:
+    status: done
+    comment: README Supported devices and functions lists NXG, NXO window/shutter and NXS/NXD plus unsupported inventory-only types.
+  docs-supported-functions:
+    status: done
+    comment: README Supported devices and functions and Actions document read-only platforms and zero-argument refresh.
+  docs-troubleshooting:
+    status: done
+    comment: README Troubleshooting covers account renewal, outages, rate limits, missing readings and safe diagnostic scope.
+  docs-use-cases:
+    status: done
+    comment: README Use cases describes notifications and observational history, never cloud-dry permission to open.
+  dynamic-devices:
+    status: done
+    comment: test_dynamic_device_addition_updates_registry_without_reload, test_empty_account_keeps_entry_discovery_listener and test_all_disabled_entities_keep_native_polling_and_discovery cover lifecycle and topology updates.
+  entity-category:
+    status: done
+    comment: test_new_diagnostic_defaults_and_useful_measurements verifies typed diagnostic categories without rewriting existing preferences.
+  entity-device-class:
+    status: done
+    comment: test_metadata.py verifies battery percent and the explicit unitless raw diagnostics correction; calibration and silent mode retain booleans without unsupported problem/running semantics.
+  entity-disabled-by-default:
+    status: done
+    comment: test_new_diagnostic_defaults_and_useful_measurements proves new secondary defaults; test_legacy_raw_diagnostics_keep_ids_options_and_historical_statistics preserves existing enablement/options.
+  entity-translations:
+    status: done
+    comment: test_native_published_entity_uses_locale_without_changing_identity verifies English/Czech/fallback names and stable unique IDs.
+  exception-translations:
+    status: done
+    comment: test_native_entity_and_exception_translation_with_fallback verifies exception catalogs; action/setup exceptions use native translation_domain/key.
+  icon-translations:
+    status: done
+    comment: icons.json supplies raw signal/battery, calibration and silent-mode icons where verified device classes do not apply; device-class icons remain native.
+  reconfiguration-flow:
+    status: done
+    comment: test_account_renewal_rejects_switch_and_preserves_credentials_on_failures verifies same-login password renewal, failure preservation and recovery.
+  repair-issues:
+    status: done
+    comment: test_native_reauth_repair_is_entry_bound_deduplicated_and_cleans_up uses native entry-bound corrective flow, successful renewal and removal cleanup; no duplicate custom issue.
+  stale-devices:
+    status: done
+    comment: test_manual_removal_requires_fresh_complete_uncontradicted_inventory plus native composite/child/removal/reappearance tests verify conservative permission; HA owns deletion. See docs/TOPOLOGY_CONTRACT.md.
+  async-dependency:
+    status: done
+    comment: packages/velux-active-client is the sole typed async aiohttp protocol implementation; HTTP regressions and test_request_budget.py enforce bounded retries/rotation/global backoff. Public distribution is user-deferred.
+  inject-websession:
+    status: done
+    comment: Client accepts an injected aiohttp session without closing it; HA supplies async_get_clientsession. Native unload and artifact smoke tests cover lifecycle; no runtime session factory or custom installer.
+  strict-typing:
+    status: done
+    comment: Strict mypy checks every owned integration/client module with no blanket exclusions or Any leaks; tests/unit/test_typing.py verifies positive and negative typed consumers.

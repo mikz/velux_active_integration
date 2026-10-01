@@ -1,16 +1,26 @@
 {
   "domain": "velux_active",
-  "name": "velux_active",
-  "version": "0.1.0",
-  "codeowners": ["@mikz"],
+  "name": "VELUX ACTIVE",
+  "codeowners": [
+    "@mikz"
+  ],
   "config_flow": true,
-  "single_config_entry": true,
   "dependencies": [],
-  "documentation": "https://www.home-assistant.io/integrations/velux_active",
-  "homekit": {},
+  "documentation": "https://github.com/mikz/velux_active_integration",
+  "homekit": {
+    "models": [
+      "VELUX Gatewa[y]",
+      "VELUX Gateway[\u0000]"
+    ]
+  },
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "requirements": [],
+  "issue_tracker": "https://github.com/mikz/velux_active_integration/issues",
+  "requirements": [
+    "velux-active-client==0.1.0"
+  ],
+  "single_config_entry": true,
   "ssdp": [],
-  "zeroconf": [],
-  "supported_platforms": ["sensor", "binary_sensor", "cover"]
+  "version": "0.2.0",
+  "zeroconf": []
 }

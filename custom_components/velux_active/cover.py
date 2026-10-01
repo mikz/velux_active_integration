@@ -2,75 +2,64 @@
 
 import logging
 
-from homeassistant.components.cover import CoverDeviceClass, CoverEntity
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverEntityFeature
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxShutterData, VeluxWindowData
-from .const import DOMAIN
+from .api import VeluxDevice, VeluxShutterData, VeluxWindowData
+from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
+from .entity import VeluxEntity, async_discover_entities
 
 _LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities
-):
+    hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
+) -> bool:
     """Set up Velux Active covers from a config entry."""
-    coordinator = hass.data[DOMAIN]["coordinator"]
-    covers = []
 
-    for home in hass.data[DOMAIN]["homes"]:
-        devices = coordinator.data[home]["devices"]
-        for device in devices:
-            if isinstance(device, VeluxWindowData):
-                covers.append(VeluxCover(coordinator, device, is_window=True))
-            elif isinstance(device, VeluxShutterData):
-                covers.append(VeluxCover(coordinator, device, is_window=False))
-            else:
-                _LOGGER.debug("Device is not a window or shutter: %s", device)
+    def create(device: VeluxDevice) -> list[VeluxCover]:
+        if isinstance(device, VeluxWindowData):
+            return [VeluxCover(entry.runtime_data, device, is_window=True)]
+        if isinstance(device, VeluxShutterData):
+            return [VeluxCover(entry.runtime_data, device, is_window=False)]
+        return []
 
-    async_add_entities(covers)
+    async_discover_entities(entry, async_add_entities, create)
 
     return True
 
-class VeluxCover(CoordinatorEntity, CoverEntity):
+
+class VeluxCover(VeluxEntity[VeluxWindowData | VeluxShutterData], CoverEntity):
     """Representation of a Velux cover (window or shutter)."""
 
-    def __init__(self, coordinator, device, is_window):
+    def __init__(
+        self,
+        coordinator: VeluxCoordinator,
+        device: VeluxWindowData | VeluxShutterData,
+        is_window: bool,
+    ) -> None:
         """Initialize the cover."""
-        super().__init__(coordinator)
-        self._device_id = device.id
-        self._home = device.home
+        super().__init__(coordinator, device)
         self._is_window = is_window
         self._attr_unique_id = device.id
 
         # Generate a name using available attributes
-        self._attr_name = f"{device.velux_type.capitalize()} {device.id[-4:]}"
+        self._attr_name = None
 
-        self._attr_device_class = (
-            CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
-        )
+        self._attr_device_class = CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
 
         # Remove the 'supported_features' attribute as it's deprecated
         # Since the cover is read-only, we don't implement any control methods
 
     @property
-    def supported_features(self) -> int:
+    def supported_features(self) -> CoverEntityFeature:
         """Flag supported features."""
-        return 0
+        return CoverEntityFeature(0)
 
     @property
-    def device(self):
-        """Return the current device object from the coordinator data."""
-        devices = self.coordinator.data.get(self._home, {}).get("devices", [])
-        for dev in devices:
-            if dev.id == self._device_id:
-                return dev
-        return None
-
-    @property
-    def is_closed(self):
+    def is_closed(self) -> bool | None:
         """Return True if the cover is closed."""
         device = self.device
         if device and device.current_position is not None:
@@ -78,7 +67,7 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
         return None
 
     @property
-    def current_cover_position(self):
+    def current_cover_position(self) -> int | None:
         """Return the current position of the cover."""
         device = self.device
         if device:
@@ -86,7 +75,7 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
         return None
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str | int | bool | None]:
         """Return additional state attributes."""
         device = self.device
         if device:
@@ -99,29 +88,11 @@ class VeluxCover(CoordinatorEntity, CoverEntity):
                 "mode": device.mode,
                 "velux_type": device.velux_type,
                 "bridge": device.bridge,
-                "rain_position": getattr(device, "rain_position", None),
-                "secure_position": getattr(device, "secure_position", None),
+                "rain_position": device.rain_position
+                if isinstance(device, VeluxWindowData)
+                else None,
+                "secure_position": (
+                    device.secure_position if isinstance(device, VeluxWindowData) else None
+                ),
             }
         return {}
-
-    @property
-    def available(self):
-        """Return True if entity is available."""
-        device = self.device
-        return device is not None and device.reachable
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information about this Velux device."""
-        device = self.device
-        if device:
-            device_name = f"{getattr(device, 'velux_type', device.type).capitalize()} {device.id[-4:]}"
-            return {
-                "identifiers": {(DOMAIN, self._device_id)},
-                "name": device_name,
-                "manufacturer": device.manufacturer,
-                "model": device.velux_type,
-                "sw_version": device.firmware_revision,
-                "via_device": (DOMAIN, device.bridge),
-            }
-        return None

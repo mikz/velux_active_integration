@@ -1,0 +1,190 @@
+{
+  "entry_id": "synthetic-legacy-entry",
+  "version": 1,
+  "entities": [
+    {
+      "domain": "cover",
+      "unique_id": "lab-window",
+      "entity_id": "cover.window_ndow",
+      "name": "My window",
+      "device": "lab-window",
+      "disabled": false
+    },
+    {
+      "domain": "cover",
+      "unique_id": "lab-shutter",
+      "entity_id": "cover.shutter_tter",
+      "name": "My shutter",
+      "device": "lab-shutter",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-gateway_is_raining",
+      "entity_id": "binary_sensor.gateway_lab_gateway_is_raining",
+      "name": "My rain",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-window_reachable",
+      "entity_id": "binary_sensor.window_ndow_reachable",
+      "name": "My connectivity",
+      "device": "lab-window",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-window_target_position",
+      "entity_id": "sensor.window_ndow_target_position",
+      "name": "My target",
+      "device": "lab-window",
+      "disabled": true
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-switch_battery_percent",
+      "entity_id": "sensor.switch_itch_battery_percent",
+      "name": "My battery",
+      "device": "lab-switch",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-gateway_wifi_strength",
+      "entity_id": "sensor.synthetic_legacy_lab_gateway_wifi_strength",
+      "name": "My lab-gateway_wifi_strength",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-gateway_last_seen",
+      "entity_id": "sensor.synthetic_legacy_lab_gateway_last_seen",
+      "name": "My lab-gateway_last_seen",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-window_rain_position",
+      "entity_id": "sensor.synthetic_legacy_lab_window_rain_position",
+      "name": "My lab-window_rain_position",
+      "device": "lab-window",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-window_last_seen",
+      "entity_id": "sensor.synthetic_legacy_lab_window_last_seen",
+      "name": "My lab-window_last_seen",
+      "device": "lab-window",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-shutter_target_position",
+      "entity_id": "sensor.synthetic_legacy_lab_shutter_target_position",
+      "name": "My lab-shutter_target_position",
+      "device": "lab-shutter",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-shutter_last_seen",
+      "entity_id": "sensor.synthetic_legacy_lab_shutter_last_seen",
+      "name": "My lab-shutter_last_seen",
+      "device": "lab-shutter",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-switch_battery_level",
+      "entity_id": "sensor.synthetic_legacy_lab_switch_battery_level",
+      "name": "My lab-switch_battery_level",
+      "device": "lab-switch",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-switch_rf_strength",
+      "entity_id": "sensor.synthetic_legacy_lab_switch_rf_strength",
+      "name": "My lab-switch_rf_strength",
+      "device": "lab-switch",
+      "disabled": false
+    },
+    {
+      "domain": "sensor",
+      "unique_id": "lab-switch_last_seen",
+      "entity_id": "sensor.synthetic_legacy_lab_switch_last_seen",
+      "name": "My lab-switch_last_seen",
+      "device": "lab-switch",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-gateway_unlocked",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_gateway_unlocked",
+      "name": "My lab-gateway_unlocked",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-gateway_locking",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_gateway_locking",
+      "name": "My lab-gateway_locking",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-gateway_calibrating",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_gateway_calibrating",
+      "name": "My lab-gateway_calibrating",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-gateway_busy",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_gateway_busy",
+      "name": "My lab-gateway_busy",
+      "device": "lab-gateway",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-window_silent",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_window_silent",
+      "name": "My lab-window_silent",
+      "device": "lab-window",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-shutter_reachable",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_shutter_reachable",
+      "name": "My lab-shutter_reachable",
+      "device": "lab-shutter",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-shutter_silent",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_shutter_silent",
+      "name": "My lab-shutter_silent",
+      "device": "lab-shutter",
+      "disabled": false
+    },
+    {
+      "domain": "binary_sensor",
+      "unique_id": "lab-switch_reachable",
+      "entity_id": "binary_sensor.synthetic_legacy_lab_switch_reachable",
+      "name": "My lab-switch_reachable",
+      "device": "lab-switch",
+      "disabled": false
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "entity": {
+    "sensor": {
+      "wifi_strength": {
+        "name": "Síla Wi-Fi"
+      },
+      "rf_strength": {
+        "name": "Síla rádiového signálu"
+      },
+      "battery_level": {
+        "name": "Úroveň baterie"
+      },
+      "battery_percent": {
+        "name": "Baterie"
+      },
+      "last_seen": {
+        "name": "Poslední kontakt"
+      },
+      "target_position": {
+        "name": "Cílová poloha"
+      },
+      "rain_position": {
+        "name": "Poloha při dešti"
+      }
+    },
+    "binary_sensor": {
+      "is_raining": {
+        "name": "Déšť"
+      },
+      "unlocked": {
+        "name": "Zámek"
+      },
+      "locking": {
+        "name": "Zamykání"
+      },
+      "calibrating": {
+        "name": "Kalibrace"
+      },
+      "busy": {
+        "name": "Zaneprázdněno"
+      },
+      "reachable": {
+        "name": "Dostupnost"
+      },
+      "silent": {
+        "name": "Tichý režim"
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Není načten účet VELUX ACTIVE"
+    },
+    "unloaded": {
+      "message": "VELUX ACTIVE byl během aktualizace odpojen"
+    },
+    "refresh_failed": {
+      "message": "Aktualizace cloudu VELUX ACTIVE selhala"
+    },
+    "invalid_auth": {
+      "message": "Je nutné obnovit přihlášení VELUX"
+    },
+    "cannot_connect": {
+      "message": "Nelze načíst data z cloudu VELUX"
+    },
+    "rate_limited": {
+      "message": "Požadavky na cloud VELUX jsou dočasně omezeny"
+    }
+  }
+}

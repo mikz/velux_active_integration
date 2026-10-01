@@ -1,0 +1,80 @@
+services:
+  ha:
+    image: ${HA_LAB_IMAGE:?Run lab.py prepare first}
+    pull_policy: never
+    dns: [127.0.0.1]
+    dns_search: ["."]
+    entrypoint: ["python3", "/lab/gate.py", "ha", "/init"]
+    environment:
+      LAB_RUN_ID: ${LAB_RUN_ID:?}
+      LAB_HA_ADDRESS: ${LAB_HA_ADDRESS:?}
+      LAB_ARTIFACT_SHA256: ${LAB_ARTIFACT_SHA256:?}
+      LAB_CLIENT_WHEEL_SHA256: ${LAB_CLIENT_WHEEL_SHA256:?}
+    labels:
+      io.velux-active.lab.run: ${LAB_RUN_ID}
+      io.velux-active.lab.role: ha
+    volumes:
+      - ha_config:/config
+      - ${LAB_CONTROL_DIR:?}:/control
+    networks:
+      lab:
+        ipv4_address: ${LAB_HA_ADDRESS:?}
+    stop_grace_period: 60s
+  simulator:
+    image: ${SIM_LAB_IMAGE:?Run lab.py prepare first}
+    pull_policy: never
+    dns: [127.0.0.1]
+    dns_search: ["."]
+    entrypoint: ["python", "/lab/gate.py", "simulator", "python", "-m", "tests.lab.cloud", "--cert", "/tls/cloud.crt", "--key", "/tls/cloud.key"]
+    environment:
+      LAB_RUN_ID: ${LAB_RUN_ID}
+    labels:
+      io.velux-active.lab.run: ${LAB_RUN_ID}
+      io.velux-active.lab.role: simulator
+    volumes:
+      - sim_data:/data
+      - ${LAB_CONTROL_DIR}:/control
+    networks:
+      lab:
+        aliases: [app.velux-active.com]
+  runner:
+    image: ${RUNNER_LAB_IMAGE:?Run lab.py prepare first}
+    pull_policy: never
+    dns: [127.0.0.1]
+    dns_search: ["."]
+    init: true
+    shm_size: 1gb
+    entrypoint: ["python", "/lab/gate.py", "runner", "python", "-m", "tests.lab.runner"]
+    environment:
+      LAB_RUN_ID: ${LAB_RUN_ID}
+      LAB_HA_VERSION: ${LAB_HA_VERSION}
+      LAB_SOURCE_REVISION: ${LAB_SOURCE_REVISION:?}
+      LAB_HA_URL: http://ha:8123
+      LAB_HA_ADDRESS: ${LAB_HA_ADDRESS}
+      LAB_SIM_URL: https://app.velux-active.com
+      LAB_SCENARIO: ${LAB_SCENARIO:-all}
+      LAB_ARTIFACT_SHA256: ${LAB_ARTIFACT_SHA256:?}
+      LAB_CLIENT_WHEEL_SHA256: ${LAB_CLIENT_WHEEL_SHA256:?}
+    labels:
+      io.velux-active.lab.run: ${LAB_RUN_ID}
+      io.velux-active.lab.role: runner
+    volumes:
+      - runner_state:/state
+      - ${LAB_CONTROL_DIR}:/control
+      - ${LAB_ARTIFACT_DIR:?}:/artifacts
+    networks: [lab]
+volumes:
+  ha_config:
+  sim_data:
+  runner_state:
+networks:
+  lab:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: ${LAB_SUBNET:?}
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+      com.docker.network.bridge.enable_icc: "true"

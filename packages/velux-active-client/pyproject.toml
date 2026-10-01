@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling==1.29.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "velux-active-client"
+version = "0.1.0"
+description = "Typed read-only async client for the VELUX ACTIVE app cloud protocol"
+readme = "README.md"
+requires-python = ">=3.14.2"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Mikz"}]
+dependencies = ["aiohttp>=3.13,<4"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Source = "https://github.com/mikz/velux_active_integration"
+Issues = "https://github.com/mikz/velux_active_integration/issues"
+Documentation = "https://github.com/mikz/velux_active_integration"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/velux_active_client"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/velux_active_client", "README.md", "LICENSE", "pyproject.toml"]
