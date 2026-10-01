@@ -841,10 +841,21 @@ async def statistics(hass, entry):
 
 async def budgets(hass, entry):
     """Incoming protocol traces include rejected HTTP calls; no outcome counters."""
+    from math import ceil
+
     from homeassistant.exceptions import HomeAssistantError
 
+    # Start through native loading at an exactly representable logical epoch.
+    # Equivalent (base + 600) + 300 / base + 900 float expressions can differ;
+    # these are exact decision boundaries, not measured real-time cadence.
+    clock = float(ceil(entry.runtime_data.topology_attempted_at))
+    before_setup = len((await configure(hass, {}))["requests"])
+    with logical_time(clock):
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    baseline_setup_http = (await configure(hass, {}))["requests"][before_setup:]
     coordinator = entry.runtime_data
-    clock = coordinator.topology_attempted_at
+    assert coordinator.topology_attempted_at == clock
     homes = ["budget-first", "budget-second"]
     topology = {
         "body": {
@@ -991,6 +1002,8 @@ async def budgets(hass, entry):
     with logical_time(date_deadline + 300):
         await checked([["/api/homesdata", None], *pair])
     return {
+        "baseline_setup_http": baseline_setup_http,
+        "logical_baseline": "integer epoch established by native reload before topology changes",
         "raw_protocol_batches": traces,
         "multi_home_cadence": True,
         "concurrent_manual_coalesced": True,

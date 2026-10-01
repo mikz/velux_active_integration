@@ -78,7 +78,12 @@ async def test_invalid_token_fields_are_connection_failure(response_api, payload
 @pytest.mark.parametrize(
     "delay,expected", [("invalid", 60), ("0", 1), ("99999", 99999), ("9" * 5000, 60), ("²", 60)]
 )
-async def test_retry_after_is_bounded_and_blocks_repeat_requests(response_api, delay, expected):
+async def test_retry_after_is_bounded_and_blocks_repeat_requests(
+    response_api, delay, expected, monkeypatch
+):
+    # Exact parser durations need a representable clock; live fractional clocks
+    # may conservatively round the authoritative deadline up by one ULP.
+    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": delay})
     with pytest.raises(RateLimitError) as error:

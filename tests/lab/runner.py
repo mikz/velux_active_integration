@@ -66,6 +66,15 @@ class Lab:
             return result.get("result")
 
     async def probe(self, case):
+        async def registered():
+            services = await self.request("GET", "/api/services")
+            return any(
+                item["domain"] == "lab_probe" and "run" in item["services"] for item in services
+            )
+
+        # Entry LOADED can precede independent lab component setup after restart.
+        # Wait for the native service registry, then dispatch the tested call once.
+        await eventually(registered, timeout=120)
         result = await self.request(
             "POST", "/api/services/lab_probe/run?return_response", {"case": case}
         )
