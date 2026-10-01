@@ -134,8 +134,12 @@ uv run python scripts/lab.py test --ha-version 2026.9.4 --timeout 900 --keep
 Freeze all source, prep, compose and runner bytes throughout these runs. Even a
 harness-only compose change can invalidate an active controller's cleanup inputs.
 The lab binds probe/preparation hashes separately from the ZIP/wheel. Logical
-fixtures patch only the named candidate/client monotonic clocks. They use native
-service, flow, removal and lifecycle boundaries; HA scheduling remains real.
+fixtures patch only the named candidate/client monotonic clocks. Exact-deadline
+scenarios initialize through the shared native integer clock baseline. Assert
+the intended endpoint request and inventory observation occurred before checking
+their consequences: a quiet trace or denied removal alone does not prove an
+inventory refresh happened. Fixtures use native service, flow, removal and
+lifecycle boundaries; HA scheduling remains real.
 Virtual backoff groups end with a full HA process restart, since the resource-free
 deadline intentionally survives entry reload. Retention is incomplete cleanup;
 after browser inspection, stop its separate loopback preview and use the scoped

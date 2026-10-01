@@ -560,6 +560,10 @@ class Lab:
                 state["entity_id"] for state in await self.request("GET", "/api/states")
             }
             self.logical_clock_checks = result["checks"]
+            self.topology_checkpoint_proof = {
+                key: result[key]
+                for key in ("baseline_setup_http", "integer_clock_baseline", "topology_checkpoints")
+            }
             reappeared = await self.probe("reappear")
             assert reappeared["one_live_entity"] and reappeared["no_permanent_suppression"]
             self.reappearance_proof = reappeared
@@ -680,6 +684,7 @@ class Lab:
                     "statistics_proof": self.statistics_proof,
                     "discovery_routes": self.discovery_routes,
                     "logical_clock_checks": self.logical_clock_checks,
+                    "topology_checkpoint_proof": self.topology_checkpoint_proof,
                     "reappearance_proof": self.reappearance_proof,
                     "cleanup_proof": self.cleanup_proof,
                     "zero_entity_proof": self.zero_entity_proof,

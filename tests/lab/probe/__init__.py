@@ -299,6 +299,20 @@ async def setup_retry(hass, entry, topology_failure):
         unsubscribe()
 
 
+async def native_integer_clock_baseline(hass, entry):
+    """Initialize exact-deadline fixtures through HA, never by changing cached times."""
+    from math import ceil
+
+    clock = float(ceil(entry.runtime_data.topology_attempted_at))
+    with logical_time(clock):
+        assert await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    assert coordinator.topology_attempted_at == coordinator.topology_observed_at == clock
+    assert coordinator.last_update_success and not coordinator.topology_failed
+    return clock, coordinator
+
+
 async def topology(hass, entry):
     """Clock-only fixtures leave all candidate decisions and HTTP paths intact."""
     from custom_components.velux_active import async_remove_config_entry_device
@@ -306,8 +320,10 @@ async def topology(hass, entry):
 
     registry = er.async_get(hass)
     devices = dr.async_get(hass)
-    coordinator = entry.runtime_data
-    clock = coordinator.topology_attempted_at
+    before_setup = len((await configure(hass, {}))["requests"])
+    clock, coordinator = await native_integer_clock_baseline(hass, entry)
+    baseline_setup_http = (await configure(hass, {}))["requests"][before_setup:]
+    checkpoints = []
     original_ids = {
         record.unique_id: record.entity_id
         for record in er.async_entries_for_config_entry(registry, entry.entry_id)
@@ -367,11 +383,29 @@ async def topology(hass, entry):
     # Status succeeds while a failed topology attempt retains inventory/time and denies removal.
     accepted = coordinator.topology_observed_at
     await configure(hass, {"topology_outage": 503})
+    before = len((await configure(hass, {}))["requests"])
     with logical_time(clock + 600):
         await action(hass)
+        trace = (await configure(hass, {}))["requests"][before:]
+        assert trace == [
+            ["/api/homesdata", None],
+            ["/api/homestatus", "lab-home"],
+            ["/api/homestatus", "new-home"],
+        ]
         assert coordinator.last_update_success and coordinator.topology_failed
-        assert coordinator.topology_observed_at == accepted
+        assert coordinator.topology_attempted_at == clock + 600
+        assert coordinator.topology_observed_at == accepted == clock + 300
         assert not await async_remove_config_entry_device(hass, entry, new_device)
+        checkpoints.append(
+            {
+                "offset": 600,
+                "requests": trace,
+                "attempted_at": coordinator.topology_attempted_at,
+                "observed_at": coordinator.topology_observed_at,
+                "topology_failed": True,
+                "removal_permitted": False,
+            }
+        )
     # Omission cannot defeat positive same-cycle status; a later complete inventory resolves it.
     await configure(
         hass,
@@ -380,9 +414,29 @@ async def topology(hass, entry):
             "topology_payload": {"body": {"homes": [known, {"id": "new-home", "modules": []}]}},
         },
     )
+    before = len((await configure(hass, {}))["requests"])
     with logical_time(clock + 900):
         await action(hass)
+        trace = (await configure(hass, {}))["requests"][before:]
+        assert trace == [
+            ["/api/homesdata", None],
+            ["/api/homestatus", "lab-home"],
+            ["/api/homestatus", "new-home"],
+        ]
+        assert coordinator.topology_attempted_at == coordinator.topology_observed_at == clock + 900
+        assert not coordinator.topology_failed
+        assert "new-gateway" in coordinator.api.status_presence
         assert not await async_remove_config_entry_device(hass, entry, new_device)
+        checkpoints.append(
+            {
+                "offset": 900,
+                "requests": trace,
+                "attempted_at": coordinator.topology_attempted_at,
+                "observed_at": coordinator.topology_observed_at,
+                "positive_status_presence": True,
+                "removal_permitted": False,
+            }
+        )
     await configure(
         hass,
         {
@@ -392,12 +446,46 @@ async def topology(hass, entry):
             }
         },
     )
+    before = len((await configure(hass, {}))["requests"])
     with logical_time(clock + 960):
         await action(hass)
+        trace = (await configure(hass, {}))["requests"][before:]
+        assert trace == [["/api/homestatus", "lab-home"], ["/api/homestatus", "new-home"]]
+        assert coordinator.topology_attempted_at == coordinator.topology_observed_at == clock + 900
+        assert "new-gateway" in coordinator.api.status_presence
         assert not await async_remove_config_entry_device(hass, entry, new_device)
+        checkpoints.append(
+            {
+                "offset": 960,
+                "requests": trace,
+                "attempted_at": coordinator.topology_attempted_at,
+                "observed_at": coordinator.topology_observed_at,
+                "positive_status_presence": True,
+                "removal_permitted": False,
+            }
+        )
+    before = len((await configure(hass, {}))["requests"])
     with logical_time(clock + 1200):
         await action(hass)
+        trace = (await configure(hass, {}))["requests"][before:]
+        assert trace == [
+            ["/api/homesdata", None],
+            ["/api/homestatus", "lab-home"],
+            ["/api/homestatus", "new-home"],
+        ]
+        assert coordinator.topology_attempted_at == coordinator.topology_observed_at == clock + 1200
+        assert "new-gateway" not in coordinator.api.status_presence
         assert await async_remove_config_entry_device(hass, entry, new_device)
+        checkpoints.append(
+            {
+                "offset": 1200,
+                "requests": trace,
+                "attempted_at": coordinator.topology_attempted_at,
+                "observed_at": coordinator.topology_observed_at,
+                "positive_status_presence": False,
+                "removal_permitted": True,
+            }
+        )
         # The external runner exercises native WS deletion, rather than the hook doing deletion.
     # Preserve positive IDs before normalization, regardless of malformed sibling order.
     from homeassistant.exceptions import HomeAssistantError
@@ -453,6 +541,9 @@ async def topology(hass, entry):
     assert entry.runtime_data.topology_observed_at < clock + 300
     assert isinstance(next(iter(entry.runtime_data.data)), VeluxHome)
     return {
+        "baseline_setup_http": baseline_setup_http,
+        "integer_clock_baseline": clock,
+        "topology_checkpoints": checkpoints,
         "dynamic_entity_id": new_id,
         "dynamic_device_id": new_device.id,
         "checks": [
@@ -881,21 +972,11 @@ async def statistics(hass, entry):
 
 async def budgets(hass, entry):
     """Incoming protocol traces include rejected HTTP calls; no outcome counters."""
-    from math import ceil
-
     from homeassistant.exceptions import HomeAssistantError
 
-    # Start through native loading at an exactly representable logical epoch.
-    # Equivalent (base + 600) + 300 / base + 900 float expressions can differ;
-    # these are exact decision boundaries, not measured real-time cadence.
-    clock = float(ceil(entry.runtime_data.topology_attempted_at))
     before_setup = len((await configure(hass, {}))["requests"])
-    with logical_time(clock):
-        assert await hass.config_entries.async_reload(entry.entry_id)
-        await hass.async_block_till_done()
+    clock, coordinator = await native_integer_clock_baseline(hass, entry)
     baseline_setup_http = (await configure(hass, {}))["requests"][before_setup:]
-    coordinator = entry.runtime_data
-    assert coordinator.topology_attempted_at == clock
     homes = ["budget-first", "budget-second"]
     topology = {
         "body": {
