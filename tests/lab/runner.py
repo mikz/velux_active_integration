@@ -273,7 +273,12 @@ class Lab:
             )
 
         async with self.scenario("pre-candidate-recorder-history-and-unit-preferences"):
-            await self.ws("recorder/update_statistics_issues")
+            core_state = (await self.request("GET", "/api/core/state"))["state"]
+            validation = await self.ws("recorder/update_statistics_issues")
+            print(
+                f"Statistics validation: core={core_state}, acknowledged={validation is None}",
+                flush=True,
+            )
             self.statistics_proof = await self.probe("statistics")
             assert self.statistics_proof["prior_hourly_samples_retained"] == 3
             assert self.statistics_proof["battery_percent_positive_control"]

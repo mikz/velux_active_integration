@@ -781,6 +781,7 @@ async def statistics(hass, entry):
         "sensor.synthetic_legacy_lab_switch_battery_level": (3724, "mV"),
     }
     recorder = get_instance(hass)
+    sensor_platform_before = "sensor" in hass.data["recorder"].recorder_platforms
     # An empty queue can mean the worker already popped a task. Queue an
     # unconditional native commit barrier instead of inferring completion.
     committed = hass.loop.create_future()
@@ -842,7 +843,12 @@ async def statistics(hass, entry):
         for identifier in identifiers
         for kind in ("state_class_removed", "units_changed")
     }
-    assert set(ir.async_get(hass).issues) == expected_issues
+    assert set(ir.async_get(hass).issues) == expected_issues, {
+        "expected": sorted(expected_issues),
+        "actual": sorted(ir.async_get(hass).issues),
+        "sensor_platform_before": sensor_platform_before,
+        "sensor_platform_after": "sensor" in hass.data["recorder"].recorder_platforms,
+    }
     assert all(percent not in issue_id for _, issue_id in expected_issues)
     return {
         "expected_native_history_warnings": len(expected_issues),

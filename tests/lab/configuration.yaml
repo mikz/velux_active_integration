@@ -1,5 +1,6 @@
 homeassistant:
   name: VELUX Cloud Lab
+  country: US
   latitude: 0
   longitude: 0
   time_zone: UTC
