@@ -168,8 +168,13 @@ both HA versions and safely corroborate direct VELUX inventory shape/counts.
   translation catalogs, and a recorder upgrade seeded before candidate first setup.
   The three raw diagnostics keep IDs/names/options (including V override and display
   precision), old samples/metadata; native compilation adds no converted/unitless
-  replacement statistics and creates no repair. This is the explicit M5 statistics
-  amendment recorded in P2, not a claim of continuous future statistics.
+  replacement statistics. The original “creates no repair” checkpoint claim was
+  incorrect: explicit native statistics validation reports state_class_removed
+  and units_changed for each preserved legacy ID. These expected notices may
+  remain visible while history is retained; fresh installs and valid battery
+  percent have none. Tests assert the exact six warnings, not a blanket absence.
+  No Core suppression, conversion, deletion or relabeling occurs. This is the
+  explicit owner-approved M5 statistics amendment recorded in P2, not a claim of continuous future statistics.
 - `test_request_budget.py` counts actual incoming multi-home HTTP calls, including
   rejected requests, and rejects account-wide contradictory duplicate status IDs.
   M7 must replay installed behavior against the frozen ZIP/wheel on both HA targets.

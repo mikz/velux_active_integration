@@ -9,8 +9,9 @@ from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     get_metadata,
     statistics_during_period,
+    update_statistics_issues,
 )
-from homeassistant.components.recorder.tasks import StatisticsTask
+from homeassistant.components.recorder.tasks import StatisticsTask, SynchronizeTask
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.translation import async_get_translations
@@ -165,8 +166,10 @@ async def test_legacy_raw_diagnostics_keep_ids_options_and_historical_statistics
     await recorder_mock.async_block_till_done()
     now = dt_util.utcnow()
     current_period = now.replace(minute=now.minute // 5 * 5, second=0, microsecond=0)
+    committed = hass.loop.create_future()
     recorder_mock.queue_task(StatisticsTask(current_period, False))
-    await recorder_mock.async_block_till_done()
+    recorder_mock.queue_task(SynchronizeTask(committed))
+    await committed
     after = await hass.async_add_executor_job(get_metadata, hass)
     assert before == {key: after[key] for key in before}
     history = await hass.async_add_executor_job(
@@ -206,6 +209,20 @@ async def test_legacy_raw_diagnostics_keep_ids_options_and_historical_statistics
     )
     assert len(positive[battery_percent]) == 1
     assert positive[battery_percent][0]["mean"] == pytest.approx(82)
+    await recorder_mock.async_add_executor_job(update_statistics_issues, hass)
+    await hass.async_block_till_done()
+    expected_issues = {
+        ("sensor", f"{kind}_{record.entity_id}")
+        for record in old.values()
+        for kind in ("state_class_removed", "units_changed")
+    }
+    assert set(ir.async_get(hass).issues) == expected_issues
+    assert all(battery_percent not in issue_id for _, issue_id in expected_issues)
+
+
+async def test_fresh_statistics_validation_has_no_history_warnings(recorder_mock, hass, loaded):
+    await recorder_mock.async_add_executor_job(update_statistics_issues, hass)
+    await hass.async_block_till_done()
     assert not ir.async_get(hass).issues
 
 

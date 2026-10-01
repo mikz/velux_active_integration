@@ -772,6 +772,7 @@ async def statistics(hass, entry):
     from homeassistant.components.recorder import get_instance
     from homeassistant.components.recorder.statistics import get_metadata, statistics_during_period
     from homeassistant.components.recorder.tasks import StatisticsTask, SynchronizeTask
+    from homeassistant.helpers import issue_registry as ir
     from homeassistant.util import dt as dt_util
 
     identifiers = {
@@ -836,7 +837,15 @@ async def statistics(hass, entry):
         lambda: get_metadata(hass, statistic_ids=set(identifiers))
     )
     assert metadata == after
+    expected_issues = {
+        ("sensor", f"{kind}_{identifier}")
+        for identifier in identifiers
+        for kind in ("state_class_removed", "units_changed")
+    }
+    assert set(ir.async_get(hass).issues) == expected_issues
+    assert all(percent not in issue_id for _, issue_id in expected_issues)
     return {
+        "expected_native_history_warnings": len(expected_issues),
         "prior_hourly_samples_retained": 3,
         "prior_metadata_unchanged": True,
         "raw_new_samples": 0,

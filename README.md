@@ -93,7 +93,12 @@ Raw Wi-Fi strength, RF strength, and battery level are unitless diagnostics.
 Their former dBm/mV labels lacked verified protocol support. Existing IDs, raw
 values, saved preferences, and recorded history remain; future long-term statistics
 stop for these three readings. A saved unit override stays stored but does not
-convert a unitless reading. Battery percent remains a separate percent measurement.
+convert a unitless reading. Home Assistant may show native “state class removed”
+and “units changed” statistics notices for preserved old history. These notices
+are expected after this correction; keeping history can leave them visible. Do
+not convert or relabel the historical values to remove a notice. Fresh installs
+without that history have no such notices. Battery percent remains a separate
+percent measurement.
 Calibration is not labeled a fault, and silent mode is not labeled motor motion.
 
 New registrations disable secondary diagnostics (raw signal/battery level, last
@@ -146,6 +151,11 @@ account and its physical devices stay configured in the VELUX app.
   can preserve old inventory while status succeeds; check the VELUX app and wait
   for recovery. Unsupported model IDs are retained for safe removal decisions
   but do not create entities.
+- **Statistics notices after upgrade:** the three raw signal/battery-level
+  diagnostics no longer claim unverified physical units. Home Assistant can show
+  “state class removed” and “units changed” for their preserved historical data.
+  Existing samples remain unchanged; new long-term samples stop. Keeping history
+  may leave these notices visible. Avoid relabeling or converting old samples.
 - **Removed device still registered:** Home Assistant owns manual removal. Open
   its device menu after a fresh complete inventory no longer reports it. Removal
   is denied during stale, failed, partial or contradicted inventory. Devices are

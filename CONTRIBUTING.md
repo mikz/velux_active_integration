@@ -208,7 +208,13 @@ Raw Wi-Fi/RF/battery-level units were not verified: these remain exact unitless
 numbers with the original IDs. Future long-term statistics stop for these three
 fields; old dBm/mV metadata and samples stay untouched. The native recorder upgrade
 test has a positive battery-percent compilation control, so an empty raw-field
-result cannot pass merely because compilation did nothing. Calibration is not a
+result cannot pass merely because compilation did nothing. Await an unconditional
+native recorder SynchronizeTask commit barrier; an empty queue may mean a worker
+already popped the compilation task. Validate native statistics issues separately
+through recorder/update_statistics_issues: preserved legacy metadata produces
+state_class_removed and units_changed notices for the three corrected readings,
+while valid battery percent and fresh installs produce none. Do not suppress
+Core notices or delete/relabel historical metadata to hide them. Calibration is not a
 fault indication and silent mode is not movement evidence.
 
 Diagnostics are config-entry-only and allowlisted. Never export arbitrary provider

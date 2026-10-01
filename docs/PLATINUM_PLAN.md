@@ -187,7 +187,14 @@ negate, relabel or delete history. A saved battery unit override remains stored 
 no longer converts the unitless reading. This explicitly supersedes uninterrupted
 future statistics for these three fields only. `battery_percent` remains a
 separate validated percent measurement. The actual client field is
-`battery_level`; do not invent a `battery_vp` alias. Normal calibration is not a
+`battery_level`; do not invent a `battery_vp` alias. Preserved historical dBm/mV
+metadata deliberately triggers Home Assistant’s native `state_class_removed` and
+`units_changed` statistics notices after validation. Keeping that history may
+leave notices visible; this is the explicit owner-approved warning outcome, not
+a migration failure or a promise of no repairs. Validate the exact warning set,
+no warnings for valid battery percent or fresh installs, and the actual committed
+battery-percent positive compilation control. Never suppress Core notices or
+convert/delete/relabel historical data to remove them. Normal calibration is not a
 verified fault and silent mode does not establish motor motion; those booleans
 retain their IDs/values with translated names/icons and no problem/running class.
 

@@ -273,9 +273,11 @@ class Lab:
             )
 
         async with self.scenario("pre-candidate-recorder-history-and-unit-preferences"):
+            await self.ws("recorder/update_statistics_issues")
             self.statistics_proof = await self.probe("statistics")
             assert self.statistics_proof["prior_hourly_samples_retained"] == 3
             assert self.statistics_proof["battery_percent_positive_control"]
+            assert self.statistics_proof["expected_native_history_warnings"] == 6
 
         async with self.scenario("native-migrated-composite-and-child-removal"):
             registry = await self.probe("registry")
