@@ -59,7 +59,11 @@ jobs:
             artifacts/lab/*/scenarios.json
             artifacts/lab/*/acceptance.json
             artifacts/lab/*/prepared.json
-            artifacts/lab/*/isolation.json
+            artifacts/lab/*/compose.json
+            artifacts/lab/*/inspect.json
+            artifacts/lab/*/routes-ha.json
+            artifacts/lab/*/routes-runner.json
+            artifacts/lab/*/routes-simulator.json
             artifacts/lab/*/cleanup-verification.json
             artifacts/lab/*/runner.log
             artifacts/lab/*/ha.log
