@@ -1,6 +1,7 @@
 """Synthetic VELUX HTTP API; never contacts another service or writes a device."""
 
 import argparse
+import asyncio
 import ssl
 import time
 from collections import Counter
@@ -31,6 +32,7 @@ class Cloud:
             "token_lifetime": 10800,
         }
         self.counts = Counter()
+        self.requests = []
         self.access = {}
         self.refresh = set()
         self.sequence = 0
@@ -49,6 +51,7 @@ class Cloud:
             {
                 "state": {k: v for k, v in self.state.items() if k != "password"},
                 "counts": dict(self.counts),
+                "requests": self.requests,
             }
         )
 
@@ -58,7 +61,25 @@ class Cloud:
             self.access.clear()
         if data.pop("invalidate_refresh", False):
             self.refresh.clear()
-        if not set(data) <= set(self.state):
+        if data.pop("reset_payloads", False):
+            for key in (
+                "topology_payload",
+                "status_payload",
+                "status_by_home",
+                "topology_outage",
+                "status_delay",
+                "retry_after",
+            ):
+                self.state.pop(key, None)
+        allowed = set(self.state) | {
+            "topology_payload",
+            "status_payload",
+            "status_by_home",
+            "topology_outage",
+            "status_delay",
+            "retry_after",
+        }
+        if not set(data) <= allowed:
             raise web.HTTPBadRequest()
         self.state.update(data)
         return await self.inspect(request)
@@ -69,7 +90,7 @@ class Cloud:
             return web.json_response(
                 {"error": {"code": 26 if status in (403, 429) else 500}},
                 status=status,
-                headers={"Retry-After": "2"},
+                headers={"Retry-After": self.state.get("retry_after", "2")},
             )
         if not auth:
             bearer = request.headers.get("Authorization", "")
@@ -81,12 +102,14 @@ class Cloud:
         return None
 
     async def token(self, request):
+        self.counts["token_requests"] += 1
+        data = await request.post()
+        grant = data.get("grant_type")
+        self.requests.append((request.path, grant))
+        self.counts[grant] += 1
         failure = self.failure(request, auth=True)
         if failure is not None:
             return failure
-        data = await request.post()
-        grant = data.get("grant_type")
-        self.counts[grant] += 1
         if (
             not data.get("client_id")
             or not data.get("client_secret")
@@ -120,22 +143,43 @@ class Cloud:
 
     async def topology(self, request):
         self.counts["homesdata"] += 1
+        self.requests.append((request.path, None))
+        if self.state.get("topology_outage"):
+            return web.json_response(
+                {},
+                status=self.state["topology_outage"],
+                headers={"Retry-After": self.state.get("retry_after", "2")},
+            )
         failure = self.failure(request)
         if failure is not None:
             return failure
+        if "topology_payload" in self.state:
+            return web.json_response(self.state["topology_payload"])
         return web.json_response(
             {"body": {"homes": [{"id": HOME, "name": "VELUX Lab", "modules": TOPOLOGY}]}}
         )
 
     async def status(self, request):
         self.counts["homestatus"] += 1
+        data = await request.post()
+        self.requests.append((request.path, data.get("home_id")))
         failure = self.failure(request)
         if failure is not None:
             return failure
-        data = await request.post()
+        if self.state.get("status_delay"):
+            await asyncio.sleep(self.state["status_delay"])
+        if "status_payload" in self.state:
+            return web.json_response(self.state["status_payload"])
+        if "status_by_home" in self.state:
+            return web.json_response(self.state["status_by_home"][data["home_id"]])
         if data.get("home_id") != HOME:
             raise web.HTTPBadRequest()
-        gateway = {"id": GATEWAY, "reachable": self.state["reachable"], "future_field": "ignored"}
+        gateway = {
+            "id": GATEWAY,
+            "reachable": self.state["reachable"],
+            "future_field": "ignored",
+            "wifi_strength": 44,
+        }
         if not self.state["omit_rain"]:
             gateway["is_raining"] = self.state["rain"]
         return web.json_response(
@@ -146,7 +190,13 @@ class Cloud:
                             gateway,
                             {"id": "lab-window", "current_position": 7, "reachable": True},
                             {"id": "lab-shutter", "current_position": 20, "reachable": True},
-                            {"id": "lab-switch", "battery_percent": 82, "reachable": True},
+                            {
+                                "id": "lab-switch",
+                                "battery_percent": 82,
+                                "battery_level": 3724,
+                                "rf_strength": 64,
+                                "reachable": True,
+                            },
                         ]
                     }
                 }

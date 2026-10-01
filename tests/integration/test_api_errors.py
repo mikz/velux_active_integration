@@ -75,7 +75,9 @@ async def test_invalid_token_fields_are_connection_failure(response_api, payload
     assert api.auth_token is None
 
 
-@pytest.mark.parametrize("delay,expected", [("invalid", 60), ("0", 1), ("99999", 3600)])
+@pytest.mark.parametrize(
+    "delay,expected", [("invalid", 60), ("0", 1), ("99999", 99999), ("9" * 5000, 60), ("²", 60)]
+)
 async def test_retry_after_is_bounded_and_blocks_repeat_requests(response_api, delay, expected):
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": delay})
@@ -84,6 +86,13 @@ async def test_retry_after_is_bounded_and_blocks_repeat_requests(response_api, d
     assert error.value.retry_after == expected
     with pytest.raises(RateLimitError):
         await api.authenticate(USERNAME, PASSWORD)
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    with pytest.raises(RateLimitError):
+        await api.get_home_data()
+    with pytest.raises(RateLimitError):
+        await api.get_home_statuses(VeluxHome("synthetic-home", "Synthetic"))
+    with pytest.raises(RateLimitError):
+        await api.refresh_access_token(api.auth_token)
     assert len(calls) == 1
 
 
@@ -214,3 +223,203 @@ def test_provider_revision_and_pairing_variants_remain_typed(version, pairing):
     device = device_from_module(module)
     assert device.firmware_revision_thirdparty == version
     assert device.pairing == pairing
+
+
+@pytest.mark.parametrize(
+    "bad_homes",
+    [
+        [{"id": "second", "modules": [{"id": "new", "type": "NXG"}]}, {"id": "bad"}],
+        [{"id": "same", "modules": []}, {"id": "same", "modules": []}],
+        [{"id": "second", "modules": [{"id": "new"}]}],
+        [
+            {"id": "second", "modules": [{"id": "duplicate", "type": "NXG"}]},
+            {"id": "third", "modules": [{"id": "duplicate", "type": "FUTURE"}]},
+        ],
+    ],
+)
+async def test_topology_replacement_is_atomic_and_requires_complete_identifiers(
+    response_api, bad_homes
+):
+    state, _, api = response_api
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    state["payload"] = {
+        "body": {
+            "homes": [
+                {
+                    "id": "original",
+                    "modules": [
+                        {"id": "known", "type": "NXG"},
+                        {"id": "unsupported", "type": "FUTURE"},
+                    ],
+                }
+            ]
+        }
+    }
+    await api.get_home_data()
+    assert api.inventory_ids == {"known", "unsupported"}
+    state["payload"] = {"body": {"homes": bad_homes}}
+    with pytest.raises(APIConnectionError, match="invalid home topology"):
+        await api.get_home_data()
+    assert api.inventory_ids == {"known", "unsupported"}
+    state["payload"] = {"body": {"homes": []}}
+    assert await api.get_home_data() == []
+    assert api.inventory_ids == set()
+
+
+async def test_error_marked_topology_cannot_replace_inventory(response_api):
+    state, _, api = response_api
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    state["payload"] = {
+        "body": {"homes": [{"id": "original", "modules": [{"id": "known", "type": "NXG"}]}]}
+    }
+    await api.get_home_data()
+    state["payload"] = {"body": {"homes": [], "errors": [{"message": "partial"}]}}
+    with pytest.raises(APIConnectionError, match="invalid home topology"):
+        await api.get_home_data()
+    assert api.inventory_ids == {"known"}
+
+
+@pytest.mark.parametrize("level", ["root", "body", "home", "module"])
+@pytest.mark.parametrize("marker", ["errors", "partial", "pagination", "next_cursor"])
+async def test_partial_inventory_markers_reject_without_password_fallback(
+    response_api, level, marker
+):
+    state, calls, api = response_api
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    module = {"id": "known", "type": "NXG"}
+    home = {"id": "home", "modules": [module]}
+    body = {"homes": [home]}
+    payload = {"body": body}
+    target = {"root": payload, "body": body, "home": home, "module": module}[level]
+    target[marker] = [{"code": 2}] if marker == "errors" else True
+    state["payload"] = payload
+    with pytest.raises(APIConnectionError, match="invalid home topology"):
+        await api.get_home_data()
+    assert api.inventory_ids == set()
+    assert calls == ["/api/homesdata"]
+
+
+@pytest.mark.parametrize("level", ["body", "home"])
+async def test_nested_status_errors_are_outages_without_auth_fallback(response_api, level):
+    state, calls, api = response_api
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    home = {"modules": []}
+    body = {"home": home}
+    (body if level == "body" else home)["errors"] = [{"code": 2}]
+    state["payload"] = {"body": body}
+    with pytest.raises(APIConnectionError, match="invalid home status"):
+        await api.get_home_statuses(VeluxHome("synthetic-home", "Synthetic"))
+    assert calls == ["/api/homestatus"]
+
+
+async def test_long_numeric_retry_after_blocks_every_endpoint_until_full_deadline(response_api):
+    from unittest.mock import patch
+
+    state, calls, api = response_api
+    state.update(status=429, headers={"Retry-After": "99999"})
+    with patch("velux_active_client.client.monotonic", return_value=1000):
+        with pytest.raises(RateLimitError) as error:
+            await api.authenticate(USERNAME, PASSWORD)
+        assert error.value.retry_after == 99999
+    api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
+    for elapsed in (3601, 99998):
+        with patch("velux_active_client.client.monotonic", return_value=1000 + elapsed):
+            for operation in (
+                api.authenticate(USERNAME, PASSWORD),
+                api.get_home_data(),
+                api.get_home_statuses(VeluxHome("synthetic", "Synthetic")),
+                api.refresh_access_token(api.auth_token),
+            ):
+                with pytest.raises(RateLimitError) as error:
+                    await operation
+                assert 0 < error.value.retry_after <= 99999
+    assert len(calls) == 1
+    state.update(status=200, payload={})
+    with patch("velux_active_client.client.monotonic", return_value=100999):
+        assert await api._request("/test") == {}
+    assert len(calls) == 2
+
+
+async def test_http_date_retry_after_uses_once_derived_monotonic_deadline(response_api):
+    from datetime import UTC, timedelta
+    from email.utils import format_datetime
+    from unittest.mock import patch
+
+    state, calls, api = response_api
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    state.update(
+        status=429, headers={"Retry-After": format_datetime(now + timedelta(hours=2), usegmt=True)}
+    )
+    with (
+        patch("velux_active_client.client.datetime") as wall,
+        patch("velux_active_client.client.monotonic", return_value=1000),
+    ):
+        wall.now.return_value = now
+        with pytest.raises(RateLimitError) as error:
+            await api._request("/test")
+        assert error.value.retry_after == 7200
+    for elapsed in (61, 7199):
+        with patch("velux_active_client.client.monotonic", return_value=1000 + elapsed):
+            with pytest.raises(RateLimitError):
+                await api._request("/test")
+    assert len(calls) == 1
+    state.update(status=200)
+    with patch("velux_active_client.client.monotonic", return_value=8200):
+        assert await api._request("/test") == {}
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "header", ["Thu, 01 Oct 2020 00:00:00 GMT", "Thu, 01 Oct 2020 00:00:00", "-1", "1" * 19]
+)
+async def test_past_dates_and_bounded_parser_fallback_still_establish_deadline(
+    response_api, header
+):
+    state, calls, api = response_api
+    state.update(status=429, headers={"Retry-After": header})
+    with pytest.raises(RateLimitError) as error:
+        await api._request("/test")
+    assert error.value.retry_after == (1 if header.startswith("Thu") else 60)
+    with pytest.raises(RateLimitError):
+        await api._request("/test")
+    assert len(calls) == 1
+
+
+async def test_inflight_shorter_throttle_does_not_shorten_shared_deadline(
+    aiohttp_server, socket_enabled
+):
+    from unittest.mock import patch
+
+    from velux_active_client import RateLimitState
+
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def respond(request):
+        calls.append(request.path)
+        if request.path == "/slow":
+            entered.set()
+            await release.wait()
+            return web.json_response({}, status=429, headers={"Retry-After": "2"})
+        return web.json_response({}, status=429, headers={"Retry-After": "99999"})
+
+    app = web.Application()
+    app.router.add_post("/{path:.*}", respond)
+    server = await aiohttp_server(app)
+    state = RateLimitState()
+    async with aiohttp.ClientSession() as session:
+        first = VeluxActiveAPI(session, base_url=str(server.make_url("")), rate_limit_state=state)
+        second = VeluxActiveAPI(session, base_url=str(server.make_url("")), rate_limit_state=state)
+        with patch("velux_active_client.client.monotonic", return_value=1000):
+            slow = asyncio.create_task(first._request("/slow"))
+            await entered.wait()
+            with pytest.raises(RateLimitError):
+                await second._request("/long")
+            release.set()
+            with pytest.raises(RateLimitError) as error:
+                await slow
+            assert error.value.retry_after == 99999
+            assert state.deadline == 100999
+            with pytest.raises(RateLimitError):
+                await first._request("/blocked")
+        assert calls == ["/slow", "/long"]

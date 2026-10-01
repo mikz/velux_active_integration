@@ -16,10 +16,19 @@ from scripts.cloud_smoke import check, extract_verified
 from tests.lab.cloud import PASSWORD, USERNAME
 
 
+@pytest.mark.parametrize(
+    "known,counts,omit_rain",
+    [
+        (["lab-gateway", "lab-window", "lab-shutter", "lab-switch"], (4, 4, 0, 0), False),
+        (["lab-gateway", "PRIVATE_COMPARISON_SENTINEL"], (2, 1, 1, 3), False),
+        (["lab-gateway", "lab-window", "lab-shutter", "lab-switch"], (4, 4, 0, 0), True),
+    ],
+)
 async def test_artifact_smoke_runs_isolated_zip_members_and_hides_credentials(
-    tmp_path, cloud, client_artifact_runtime
+    tmp_path, cloud, client_artifact_runtime, known, counts, omit_rain
 ):
-    _, api = cloud
+    simulator, api = cloud
+    simulator.state["omit_rain"] = omit_rain
     interpreter, wheel = client_artifact_runtime
     credentials = tmp_path / "credentials.json"
     credentials.write_text(json.dumps({"username": USERNAME, "password": PASSWORD}))
@@ -40,17 +49,42 @@ async def test_artifact_smoke_runs_isolated_zip_members_and_hides_credentials(
         str(wheel),
         "--synthetic-url",
         api._base_url,
+        "--compare-registry-stdin",
+        stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await process.communicate()
+    stdout, stderr = await process.communicate(json.dumps({"known_registry_ids": known}).encode())
     assert PASSWORD.encode() not in stdout + stderr
     assert USERNAME.encode() not in stdout + stderr
+    assert b"COMPARISON_INPUT_READY" in stderr
+    assert all(identifier.encode() not in stdout + stderr for identifier in known)
     report = json.loads(stdout)
     assert process.returncode == 0, report
     assert report["isolated"] and report["status"] == "passed"
     assert report["authenticated"] and report["token_refreshed"] and report["status_refreshed"]
     assert report["parsed_device_count"] == report["refreshed_module_count"] == 4
+    assert report["known_inventory_comparison"] == {
+        "known_count": counts[0],
+        "observed_count": 4,
+        "overlap_count": counts[1],
+        "missing_count": counts[2],
+        "extra_count": counts[3],
+    }
+    assert report["inventory_shape"] == {
+        "validated_unfiltered_inventory": True,
+        "all_homes_explicit_module_arrays": True,
+        "account_visible_id_count": 4,
+    }
+    expected_rain = {
+        "gateway_count": 1,
+        "exact_boolean_rain_count": int(not omit_rain),
+        "missing_or_null_rain_count": int(omit_rain),
+        "reachable_with_known_rain_count": int(not omit_rain),
+        "rain_available": not omit_rain,
+    }
+    assert report["rain_before_token_refresh"] == expected_rain
+    assert report["rain_after_token_refresh"] == expected_rain
     dependency = report["dependency_proof"]
     assert dependency["version"] == "0.1.0"
     assert VeluxActiveAPI.__module__ in dependency["modules"]

@@ -116,10 +116,33 @@ def verify_dependency(wheel: Path, requirements: list[str]) -> dict:
     }
 
 
-async def check(api_module, credentials: dict, base_url: str | None) -> dict:
+async def check(
+    api_module, credentials: dict, base_url: str | None, known_registry_ids: set[str] | None = None
+) -> dict:
     import aiohttp
 
     report = {}
+
+    def rain_observations(modules):
+        gateways = [
+            device
+            for module in modules
+            if isinstance(
+                device := api_module.device_from_module(module), api_module.VeluxGatewayData
+            )
+        ]
+        exact = sum(type(device.is_raining) is bool for device in gateways)
+        usable = sum(
+            type(device.is_raining) is bool and device.reachable is not False for device in gateways
+        )
+        return {
+            "gateway_count": len(gateways),
+            "exact_boolean_rain_count": exact,
+            "missing_or_null_rain_count": len(gateways) - exact,
+            "reachable_with_known_rain_count": usable,
+            "rain_available": usable > 0,
+        }
+
     async with aiohttp.ClientSession() as session:
         api = api_module.VeluxActiveAPI(session, **({"base_url": base_url} if base_url else {}))
         await api.authenticate(credentials["username"], credentials["password"])
@@ -128,17 +151,41 @@ async def check(api_module, credentials: dict, base_url: str | None) -> dict:
         report["home_count"] = len(homes)
         if not homes:
             raise ValueError("Status proof requires a nonempty inventory")
+        # The typed client accepts only explicit, atomically validated home/module
+        # arrays from the unfiltered request. This is protocol corroboration,
+        # not a provider guarantee of completeness.
+        observed = api.inventory_ids
+        report["inventory_shape"] = {
+            "validated_unfiltered_inventory": True,
+            "all_homes_explicit_module_arrays": True,
+            "account_visible_id_count": len(observed),
+        }
+        if known_registry_ids is not None:
+            report["known_inventory_comparison"] = {
+                "known_count": len(known_registry_ids),
+                "observed_count": len(observed),
+                "overlap_count": len(known_registry_ids & observed),
+                "missing_count": len(known_registry_ids - observed),
+                "extra_count": len(observed - known_registry_ids),
+            }
         report["parsed_device_count"] = 0
+        observed_modules = []
         for home in homes:
             modules = await api.get_home_statuses(home)
+            observed_modules.extend(modules)
             report["parsed_device_count"] += sum(
                 api_module.device_from_module(m) is not None for m in modules
             )
+        report["rain_before_token_refresh"] = rain_observations(observed_modules)
         api.auth_token = await api.refresh_access_token(api.auth_token)
         report["token_refreshed"] = True
         report["refreshed_module_count"] = 0
+        refreshed_modules = []
         for home in homes:
-            report["refreshed_module_count"] += len(await api.get_home_statuses(home))
+            modules = await api.get_home_statuses(home)
+            refreshed_modules.extend(modules)
+            report["refreshed_module_count"] += len(modules)
+        report["rain_after_token_refresh"] = rain_observations(refreshed_modules)
         report["status_refreshed"] = True
     return report
 
@@ -156,7 +203,21 @@ def child(args) -> dict:
                 raise ValueError("An exact installed dependency wheel is required")
             dependency = verify_dependency(args.dependency_wheel, manifest["requirements"])
         credentials = json.loads(args.credentials.read_text())
-        report = asyncio.run(check(api, credentials, args.synthetic_url))
+        known_registry_ids = None
+        if args.compare_registry_stdin:
+            comparison = json.loads(sys.stdin.read(1_048_577))
+            if not isinstance(comparison, dict) or set(comparison) != {"known_registry_ids"}:
+                raise ValueError("Invalid comparison input")
+            values = comparison["known_registry_ids"]
+            if (
+                not isinstance(values, list)
+                or not 1 <= len(values) <= 1000
+                or any(not isinstance(value, str) or not value for value in values)
+                or len(set(values)) != len(values)
+            ):
+                raise ValueError("Invalid comparison input")
+            known_registry_ids = set(values)
+        report = asyncio.run(check(api, credentials, args.synthetic_url, known_registry_ids))
         report.update(
             status="passed",
             zip_sha256=hashlib.sha256(args.archive.read_bytes()).hexdigest(),
@@ -174,6 +235,11 @@ def main() -> int:
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--credentials", type=Path, required=True)
     parser.add_argument("--dependency-wheel", type=Path)
+    parser.add_argument(
+        "--compare-registry-stdin",
+        action="store_true",
+        help='Read private {"known_registry_ids": [str, ...]} JSON from stdin; emit counts only',
+    )
     parser.add_argument(
         "--python", type=Path, help="Prepared clean interpreter with the exact wheel"
     )
@@ -207,9 +273,20 @@ def main() -> int:
         command.extend(["--synthetic-url", args.synthetic_url])
     if args.dependency_wheel:
         command.extend(["--dependency-wheel", str(args.dependency_wheel.resolve())])
+    private_input = None
+    if args.compare_registry_stdin:
+        command.append("--compare-registry-stdin")
+        print("COMPARISON_INPUT_READY", file=sys.stderr, flush=True)
+        private_input = sys.stdin.read(1_048_577)
     with tempfile.TemporaryDirectory() as temporary:
         result = subprocess.run(
-            command, cwd=temporary, capture_output=True, text=True, timeout=180, check=False
+            command,
+            cwd=temporary,
+            capture_output=True,
+            text=True,
+            input=private_input,
+            timeout=180,
+            check=False,
         )
     # Only the bounded structured child result leaves the runner; stderr is never echoed.
     try:

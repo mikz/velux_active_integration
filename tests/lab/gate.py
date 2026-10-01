@@ -33,6 +33,8 @@ def main():
         if len(wheels) != 1:
             raise SystemExit("Lab requires exactly one frozen client wheel")
         proof = verify_dependency(wheels[0], manifest["requirements"])
+        if proof["wheel_sha256"] != os.environ["LAB_CLIENT_WHEEL_SHA256"]:
+            raise SystemExit("Installed wheel does not match the frozen lab receipt")
         proof.update(
             python_version=platform.python_version(),
             aiohttp_version=importlib.metadata.version("aiohttp"),
@@ -63,12 +65,16 @@ def main():
             target = config / "custom_components"
             target.mkdir(exist_ok=True)
             shutil.copytree("/opt/velux-active/integration", target / "velux_active")
+            shutil.copytree("/lab/probe", target / "lab_probe")
             # A real version-one entry/registry exists BEFORE candidate first setup.
             storage = config / ".storage"
             storage.mkdir(exist_ok=True)
-            fixtures = json.loads(Path("/lab/legacy_storage.json").read_text())
+            from legacy import with_composite
+
+            fixtures = with_composite(json.loads(Path("/lab/legacy_storage.json").read_text()))
             for key, payload in fixtures.items():
                 (storage / key).write_text(json.dumps(payload) + "\n")
+            shutil.copyfile("/lab/legacy-recorder.db", config / "home-assistant_v2.db")
             receipt.write_text(digest + "\n")
     os.execvp(command[0], command)
 

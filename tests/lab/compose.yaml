@@ -8,6 +8,8 @@ services:
     environment:
       LAB_RUN_ID: ${LAB_RUN_ID:?}
       LAB_HA_ADDRESS: ${LAB_HA_ADDRESS:?}
+      LAB_ARTIFACT_SHA256: ${LAB_ARTIFACT_SHA256:?}
+      LAB_CLIENT_WHEEL_SHA256: ${LAB_CLIENT_WHEEL_SHA256:?}
     labels:
       io.velux-active.lab.run: ${LAB_RUN_ID}
       io.velux-active.lab.role: ha
@@ -46,6 +48,7 @@ services:
     environment:
       LAB_RUN_ID: ${LAB_RUN_ID}
       LAB_HA_VERSION: ${LAB_HA_VERSION}
+      LAB_SOURCE_REVISION: ${LAB_SOURCE_REVISION:?}
       LAB_HA_URL: http://ha:8123
       LAB_HA_ADDRESS: ${LAB_HA_ADDRESS}
       LAB_SIM_URL: https://app.velux-active.com

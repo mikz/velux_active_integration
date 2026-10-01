@@ -20,6 +20,16 @@ Contributions to this repository use the [MIT license](LICENSE).
 Assistant's shared `aiohttp.ClientSession` and does not create or close it. The
 client implements bounded HTTP requests, token rotation under an async lock,
 read-only topology/status endpoints, and a monotonic Retry-After deadline.
+The optional client `RateLimitState` contains only that deadline. A lazy typed
+`HassKey` retains one conservative endpoint gate per HA process, including clients
+created by a flow before component setup. Reconstruct credentials and sessions
+normally; never retain them in the gate or reset it on unload/removal. Native HA
+setup retries may run before the deadline: the new client must fail promptly with
+zero HTTP requests. Decimal delays and UTC HTTP dates establish a full monotonic
+deadline; concurrent shorter responses cannot shorten it. Parsing limits are 128
+ASCII header characters and 18 decimal digits, with a 60-second fallback for
+oversized or malformed input and a one-second minimum for zero/past dates.
+These resource bounds are distinct from truncating an ordinary valid delay.
 `coordinator.py` owns polling and translates authentication failures into
 `ConfigEntryAuthFailed`, and connectivity/rate failures into `UpdateFailed`.
 Home Assistant supplies first-refresh validation, retry scheduling, and one
@@ -108,6 +118,38 @@ startup gate validates the exact manifest pin, installed origins, and member
 hashes. Receipts bind both the integration ZIP and client wheel. Development's
 workspace editable installation is not artifact acceptance evidence.
 
+For final installed acceptance, generate the synthetic recorder seed before
+preparation and run the two targets sequentially:
+
+```sh
+uv run pytest scripts/generate_legacy_recorder.py -q
+uv run python scripts/release.py build
+uv run python scripts/release.py verify
+uv run python scripts/lab.py prepare --ha-version 2026.9.3
+uv run python scripts/lab.py test --ha-version 2026.9.3 --timeout 900
+uv run python scripts/lab.py prepare --ha-version 2026.9.4
+uv run python scripts/lab.py test --ha-version 2026.9.4 --timeout 900 --keep
+```
+
+Freeze all source, prep, compose and runner bytes throughout these runs. Even a
+harness-only compose change can invalidate an active controller's cleanup inputs.
+The lab binds probe/preparation hashes separately from the ZIP/wheel. Logical
+fixtures patch only the named candidate/client monotonic clocks. They use native
+service, flow, removal and lifecycle boundaries; HA scheduling remains real.
+Virtual backoff groups end with a full HA process restart, since the resource-free
+deadline intentionally survives entry reload. Retention is incomplete cleanup;
+after browser inspection, stop its separate loopback preview and use the scoped
+`scripts/lab.py clean RUN_ID`, then record empty Docker-object verification.
+
+The optional real-cloud runner `--compare-registry-stdin` accepts exactly
+`{"known_registry_ids": ["..."]}` and prints `COMPARISON_INPUT_READY` before
+reading. Supply private IDs through a pipe or a dedicated terminal with echo
+disabled, never through files or command arguments. It forwards input to the
+isolated child and emits only overlap/missing/extra counts, qualified inventory
+shape booleans and anonymous gateway/rain counts before/after token refresh.
+Missing/null rain is reported honestly and does not become dry or fail an otherwise
+valid cloud observation. The existing credentials file remains separate.
+
 Local brand assets use original, MIT-licensed community artwork. See
 [asset provenance](assets/README.md) and `scripts/brand.py` for reproducible source.
 
@@ -120,7 +162,7 @@ lifecycle behavior. Local brand images require HA 2026.3 or later, already cover
 by this minimum.
 
 1. Run locked source tests, the per-module coverage gate, and Ruff check/format.
-2. Review all 30 local Bronze/Silver ledger rules and their evidence. Keep Custom
+2. Review all 54 local ledger rules and their exact evidence, including open gates. Keep Custom
    status; do not set `manifest.quality_scale` to an official tier.
 3. Run hassfest and HACS validation without ignoring brands.
 4. Check the payload inventory against the intended tracked integration files.
@@ -139,3 +181,47 @@ by this minimum.
 6. Update the manifest/project version together for a release, rebuild and retest
    if integration bytes changed, and publish through the release workflow. It
    builds the same deterministic ZIP and its file-hash manifest for HACS.
+
+## Dynamic topology and removal evidence
+
+See [the topology contract](docs/TOPOLOGY_CONTRACT.md) for the qualified inventory
+inference, cadence and absence permission rules. Collect positive wire IDs before
+model normalization: a malformed sibling or missing type can fail a status poll,
+but must not erase credible device presence. Missing status is never inverse
+presence evidence. Keep inventory failures separate from successful status and
+never authorize deletion from a partly completed refresh. Log one anonymous
+transition per device using effective measurement availability, including an
+omitted device or unknown reachability; preserve native cloud outage logging.
+
+## Metadata and diagnostic boundaries
+
+Entity descriptions carry typed names, translation keys, classes and defaults.
+Secondary diagnostics default off only for new registry records; updates never
+rewrite user names, enabled/disabled choices, unit overrides or display precision.
+Native HA can restore deleted registry records on remove/re-add, including their
+preferences. Use never-before-seen device IDs to prove new-registration defaults;
+use the restored records to prove preference preservation. In installed concurrent
+service probes, child callers await only service completion. Put the native
+block-until-done wait at the parent boundary, so children do not wait on their own
+parent probe and mask otherwise completed refresh operations.
+Raw Wi-Fi/RF/battery-level units were not verified: these remain exact unitless
+numbers with the original IDs. Future long-term statistics stop for these three
+fields; old dBm/mV metadata and samples stay untouched. The native recorder upgrade
+test has a positive battery-percent compilation control, so an empty raw-field
+result cannot pass merely because compilation did nothing. Calibration is not a
+fault indication and silent mode is not movement evidence.
+
+Diagnostics are config-entry-only and allowlisted. Never export arbitrary provider
+strings under a seemingly safe key: IDs, names, firmware text and raw errors can
+contain secrets. Normalize known enums/counts and finite relative timings. The
+callback owns its JSON only; HA owns enclosing system/manifest/issues metadata,
+headers and the entry-based filename. Do not patch Core to claim broader privacy.
+Native entry-bound reauth notifications supply the corrective account flow; no
+second custom repair issue is needed. Test actual authenticated exports and native
+repair cleanup, not only dictionary serialization.
+
+Account-wide status must reject duplicate IDs across homes as well as within each
+response. Presence is collected before normalization and remains a conservative
+removal veto even when malformed siblings invalidate a snapshot. Request budgets
+count incoming HTTP calls before rejection; accepted-token counts cannot prove a
+throttled endpoint was never contacted.

@@ -10,6 +10,7 @@ lovelace:
   mode: storage
 config:
 api:
+diagnostics:
 websocket_api:
 recorder:
   purge_keep_days: 1
@@ -19,3 +20,6 @@ logger:
   default: warning
   logs:
     custom_components.velux_active: debug
+
+lab_probe:
+repairs:

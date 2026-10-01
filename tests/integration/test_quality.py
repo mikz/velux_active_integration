@@ -408,3 +408,598 @@ async def test_legacy_identity_oracle_rejects_deliberate_rain_unique_id_mutation
 
     with patch.object(VeluxBinarySensor, "__init__", mutate), pytest.raises(AssertionError):
         await test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reauth(hass, cloud)
+
+
+async def test_topology_cadence_retains_inventory_on_failure_and_status_continues(hass, loaded):
+    entry, simulator, _ = loaded
+    coordinator = entry.runtime_data
+    topology_observed = coordinator.topology_observed_at
+    old_homes = coordinator.homes
+    attempt = coordinator.topology_attempted_at
+    simulator.state["topology_outage"] = 503
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=attempt + 299):
+        await refresh(hass)
+    assert simulator.counts["homesdata"] == 1
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=attempt + 300):
+        await refresh(hass)
+    assert simulator.counts["homesdata"] == 2
+    assert coordinator.topology_failed
+    assert coordinator.topology_observed_at == topology_observed
+    assert coordinator.status_observed_at == attempt + 300
+    assert coordinator.homes == old_homes
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=attempt + 599):
+        await refresh(hass)
+    assert simulator.counts["homesdata"] == 2
+    simulator.state["topology_outage"] = 0
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=attempt + 600):
+        await refresh(hass)
+    assert simulator.counts["homesdata"] == 3
+    assert not coordinator.topology_failed
+    assert coordinator.topology_observed_at == attempt + 600
+
+
+@pytest.mark.parametrize("status", [401, 429])
+async def test_terminal_topology_failure_cannot_be_hidden_by_status_success(hass, loaded, status):
+    entry, simulator, _ = loaded
+    simulator.state["topology_outage"] = status
+    old_status_calls = simulator.counts["homestatus"]
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        with pytest.raises(HomeAssistantError):
+            await refresh(hass)
+    assert simulator.counts["homestatus"] == old_status_calls
+    assert entry.runtime_data.topology_failed
+
+
+async def test_omitted_known_device_logs_one_outage_and_recovery(hass, loaded, caplog):
+    _, simulator, _ = loaded
+    registry = er.async_get(hass)
+    rain = registry.async_get_entity_id("binary_sensor", "velux_active", "lab-gateway_is_raining")
+    simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+    caplog.set_level("INFO", logger="custom_components.velux_active.coordinator")
+    await refresh(hass)
+    await refresh(hass)
+    assert hass.states.get(rain).state == "unavailable"
+    assert sum("is unavailable" in r.message for r in caplog.records) == 4
+    del simulator.state["status_payload"]
+    await refresh(hass)
+    await refresh(hass)
+    assert hass.states.get(rain).state == "off"
+    assert sum("recovered" in r.message for r in caplog.records) == 4
+
+
+async def test_existing_device_home_move_keeps_original_live_entity(hass, loaded):
+    from tests.lab.cloud import TOPOLOGY
+
+    entry, simulator, _ = loaded
+    registry = er.async_get(hass)
+    rain = registry.async_get_entity_id("binary_sensor", "velux_active", "lab-gateway_is_raining")
+    before = set(registry.entities)
+    simulator.state["topology_payload"] = {
+        "body": {"homes": [{"id": "new-synthetic-home", "name": "Renamed", "modules": TOPOLOGY}]}
+    }
+    simulator.state["status_payload"] = {
+        "body": {
+            "home": {"modules": [{"id": "lab-gateway", "is_raining": True, "reachable": True}]}
+        }
+    }
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        await refresh(hass)
+    assert hass.states.get(rain).state == "on"
+    assert set(registry.entities) == before
+
+
+async def test_dynamic_device_addition_updates_registry_without_reload(hass, loaded):
+    from homeassistant.helpers import device_registry as dr
+
+    from tests.lab.cloud import HOME, TOPOLOGY
+
+    entry, simulator, _ = loaded
+    registry = er.async_get(hass)
+    original = set(registry.entities)
+    simulator.state["topology_payload"] = {
+        "body": {
+            "homes": [
+                {
+                    "id": HOME,
+                    "name": "Renamed",
+                    "modules": TOPOLOGY
+                    + [{"id": "new-gateway", "type": "NXG", "name": "Synthetic new gateway"}],
+                }
+            ]
+        }
+    }
+    simulator.state["status_payload"] = {
+        "body": {
+            "home": {"modules": [{"id": "new-gateway", "is_raining": True, "reachable": True}]}
+        }
+    }
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        await refresh(hass)
+        await hass.async_block_till_done()
+        await refresh(hass)
+        await hass.async_block_till_done()
+    rain = registry.async_get_entity_id("binary_sensor", "velux_active", "new-gateway_is_raining")
+    assert hass.states.get(rain).state == "on"
+    assert original <= set(registry.entities)
+    entities = [e for e in registry.entities.values() if e.unique_id == "new-gateway_is_raining"]
+    assert len(entities) == 1
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("velux_active", "new-gateway"), entry.entry_id
+    )
+    assert device.name == "Synthetic new gateway"
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_empty_account_keeps_entry_discovery_listener(hass, cloud):
+    from tests.lab.cloud import HOME, TOPOLOGY
+
+    simulator, api = cloud
+    simulator.state["topology_payload"] = {"body": {"homes": []}}
+    entry = MockConfigEntry(
+        domain="velux_active", version=1, data={"username": USERNAME, "password": PASSWORD}
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        simulator.state["topology_payload"] = {
+            "body": {"homes": [{"id": HOME, "name": "Synthetic", "modules": TOPOLOGY}]}
+        }
+        due = entry.runtime_data.topology_attempted_at + 300
+        with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+            async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+            await hass.async_block_till_done(wait_background_tasks=True)
+        rain = er.async_get(hass).async_get_entity_id(
+            "binary_sensor", "velux_active", "lab-gateway_is_raining"
+        )
+        assert hass.states.get(rain).state == "off"
+
+
+async def test_manual_removal_requires_fresh_complete_uncontradicted_inventory(hass, loaded):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+    from tests.lab.cloud import HOME
+
+    entry, simulator, _ = loaded
+    coordinator = entry.runtime_data
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    assert not await async_remove_config_entry_device(hass, entry, device)
+    due = coordinator.topology_attempted_at + 300
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    # An unsupported ID in same-cycle status vetoes absence too.
+    simulator.state["status_payload"] = {
+        "body": {"home": {"modules": [{"id": "lab-gateway", "type": "FUTURE"}]}}
+    }
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 300):
+        await refresh(hass)
+        assert await async_remove_config_entry_device(hass, entry, device)
+        # Permission is not deletion.
+        assert dr.async_get(hass).async_get(device.id) is device
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 600):
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        simulator.state["topology_outage"] = 503
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 900):
+        simulator.state["topology_outage"] = 0
+        await refresh(hass)
+        assert await async_remove_config_entry_device(hass, entry, device)
+
+
+async def test_native_removal_preserves_other_owner_and_reappearance(hass, loaded, hass_ws_client):
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.setup import async_setup_component
+
+    from tests.lab.cloud import HOME
+
+    entry, simulator, _ = loaded
+    registry = dr.async_get(hass)
+    device = registry.async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    other = MockConfigEntry(domain="test", data={})
+    other.add_to_hass(hass)
+    other_device = registry.async_get_or_create(
+        config_entry_id=other.entry_id,
+        identifiers={("velux_active", "lab-gateway")},
+        name="Other owner's device",
+    )
+    assert other_device.id != device.id
+    assert await async_setup_component(hass, "config", {})
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {"id": 1, "type": "config/device_registry/remove", "device_id": device.id}
+    )
+    denied = await client.receive_json()
+    assert denied["success"] is False
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        await refresh(hass)
+        await client.send_json(
+            {"id": 2, "type": "config/device_registry/remove", "device_id": device.id}
+        )
+        accepted = await client.receive_json()
+        assert accepted["success"] is True
+        await hass.async_block_till_done()
+        assert registry.async_get(device.id) is None
+        assert registry.async_get(other_device.id) is not None
+    del simulator.state["topology_payload"]
+    del simulator.state["status_payload"]
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 300):
+        await refresh(hass)
+        await hass.async_block_till_done()
+    rain = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", "velux_active", "lab-gateway_is_raining"
+    )
+    assert hass.states.get(rain).state == "off"
+    assert (
+        len(
+            [
+                e
+                for e in er.async_get(hass).entities.values()
+                if e.unique_id == "lab-gateway_is_raining"
+            ]
+        )
+        == 1
+    )
+    assert registry.async_get(other_device.id) is not None
+
+
+async def test_removal_is_denied_while_refresh_has_only_partial_observations(hass, loaded):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+    from tests.lab.cloud import HOME
+
+    entry, simulator, api = loaded
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = api.get_home_statuses
+
+    async def delayed(home):
+        entered.set()
+        await release.wait()
+        return await original(home)
+
+    due = entry.runtime_data.topology_attempted_at + 300
+    with (
+        patch("custom_components.velux_active.coordinator.monotonic", return_value=due),
+        patch.object(api, "get_home_statuses", side_effect=delayed),
+    ):
+        operation = asyncio.create_task(refresh(hass))
+        await entered.wait()
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        release.set()
+        await operation
+        assert await async_remove_config_entry_device(hass, entry, device)
+
+
+async def test_all_disabled_entities_keep_native_polling_and_discovery(hass, loaded):
+    from tests.lab.cloud import HOME, TOPOLOGY
+
+    entry, simulator, _ = loaded
+    registry = er.async_get(hass)
+    for entity in tuple(registry.entities.values()):
+        if entity.config_entry_id == entry.entry_id:
+            registry.async_update_entity(
+                entity.entity_id, disabled_by=er.RegistryEntryDisabler.USER
+            )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    simulator.state["topology_payload"] = {
+        "body": {
+            "homes": [
+                {"id": HOME, "modules": TOPOLOGY + [{"id": "new-disabled-test", "type": "NXG"}]}
+            ]
+        }
+    }
+    simulator.state["status_payload"] = {
+        "body": {
+            "home": {
+                "modules": [{"id": "new-disabled-test", "is_raining": False, "reachable": True}]
+            }
+        }
+    }
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=61))
+        await hass.async_block_till_done(wait_background_tasks=True)
+    rain = registry.async_get_entity_id(
+        "binary_sensor", "velux_active", "new-disabled-test_is_raining"
+    )
+    assert hass.states.get(rain).state == "off"
+    original = registry.async_get_entity_id(
+        "binary_sensor", "velux_active", "lab-gateway_is_raining"
+    )
+    assert registry.async_get(original).disabled_by is er.RegistryEntryDisabler.USER
+
+
+async def test_sparse_status_presence_survives_model_failure_and_later_omission(hass, loaded):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+    from tests.lab.cloud import HOME
+
+    entry, simulator, _ = loaded
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        # Original sparse status positively reports IDs with no type metadata now.
+        with pytest.raises(HomeAssistantError):
+            await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 300):
+        await refresh(hass)
+        assert await async_remove_config_entry_device(hass, entry, device)
+
+
+async def test_unknown_reachability_uses_effective_availability_transition(hass, loaded, caplog):
+    _, simulator, _ = loaded
+    caplog.set_level("INFO", logger="custom_components.velux_active.coordinator")
+    rain = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", "velux_active", "lab-gateway_is_raining"
+    )
+    for reachable, expected in [(False, "unavailable"), (None, "off"), (None, "off")]:
+        simulator.state["reachable"] = reachable
+        await refresh(hass)
+        assert hass.states.get(rain).state == expected
+    assert sum("is unavailable" in r.message for r in caplog.records) == 1
+    assert sum("recovered" in r.message for r in caplog.records) == 1
+
+
+async def test_initial_unknown_reachability_then_omission_is_logged(hass, cloud, caplog):
+    simulator, api = cloud
+    simulator.state["reachable"] = None
+    entry = MockConfigEntry(
+        domain="velux_active", version=1, data={"username": USERNAME, "password": PASSWORD}
+    )
+    entry.add_to_hass(hass)
+    with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        caplog.set_level("INFO", logger="custom_components.velux_active.coordinator")
+        simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+        await refresh(hass)
+        await refresh(hass)
+        assert sum("is unavailable" in r.message for r in caplog.records) == 4
+        del simulator.state["status_payload"]
+        await refresh(hass)
+        assert sum("recovered" in r.message for r in caplog.records) == 4
+
+
+async def test_removal_denies_unknown_owner_ambiguous_identity_and_uninitialized_inventory(
+    hass, loaded
+):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+
+    entry, _, _ = loaded
+    registry = dr.async_get(hass)
+    other = MockConfigEntry(domain="test", data={})
+    other.add_to_hass(hass)
+    wrong = registry.async_get_or_create(
+        config_entry_id=other.entry_id, identifiers={("velux_active", "absent")}
+    )
+    assert not await async_remove_config_entry_device(hass, entry, wrong)
+    ambiguous = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("velux_active", "absent-one"), ("velux_active", "absent-two")},
+    )
+    assert not await async_remove_config_entry_device(hass, entry, ambiguous)
+    coordinator = entry.runtime_data
+    coordinator.topology_observed_at = None
+    assert not coordinator.async_can_remove_device("absent")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert not await async_remove_config_entry_device(hass, entry, ambiguous)
+
+
+@pytest.mark.parametrize("malformed_first", [True, False])
+@pytest.mark.parametrize("nested_error", [True, False])
+async def test_status_presence_veto_survives_malformed_siblings_and_nested_errors(
+    hass, loaded, malformed_first, nested_error
+):
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.velux_active import async_remove_config_entry_device
+    from tests.lab.cloud import HOME
+
+    entry, simulator, _ = loaded
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    records = [None, {"id": "lab-gateway", "type": "FUTURE"}]
+    if not malformed_first:
+        records.reverse()
+    body = {"home": {"modules": records}}
+    if nested_error:
+        body["errors"] = [{"code": 2}]
+    simulator.state["status_payload"] = {"body": body}
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        with pytest.raises(HomeAssistantError):
+            await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+        simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+        await refresh(hass)
+        assert not await async_remove_config_entry_device(hass, entry, device)
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due + 300):
+        await refresh(hass)
+        assert await async_remove_config_entry_device(hass, entry, device)
+
+
+@pytest.fixture
+async def migrated_composite_ready(hass, cloud, hass_storage):
+    import copy
+    import json
+    from pathlib import Path
+
+    simulator, api = cloud
+    entry = MockConfigEntry(
+        domain="velux_active", version=1, data={"username": USERNAME, "password": PASSWORD}
+    )
+    other = MockConfigEntry(domain="test", data={})
+    entry.add_to_hass(hass)
+    other.add_to_hass(hass)
+    storage = json.loads((Path(__file__).parents[1] / "fixtures/legacy_storage.json").read_text())
+    device = copy.deepcopy(storage["core.device_registry"]["data"]["devices"][0])
+    old_id = device["id"]
+    device["identifiers"] = [["velux_active", "lab-gateway"]]
+    device["config_entries"] = [entry.entry_id, other.entry_id]
+    device["config_entries_subentries"] = {entry.entry_id: [None], other.entry_id: [None]}
+    device["primary_config_entry"] = entry.entry_id
+    device["name_by_user"] = "Shared custom name"
+    for key in (
+        "config_entry_id",
+        "config_subentry_id",
+        "composite_device_id",
+        "composite_primary_config_entry",
+        "split_at",
+        "has_composite_identifiers",
+    ):
+        device.pop(key, None)
+    hass_storage["core.device_registry"] = {
+        "version": 1,
+        "minor_version": 12,
+        "data": {"devices": [device], "deleted_devices": []},
+    }
+    from homeassistant.helpers import device_registry as dr
+
+    dr.async_setup(hass)
+    await dr.async_load(hass)
+    await er.async_load(hass)
+    with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        yield hass, entry, other, simulator, old_id
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+        await hass.async_block_till_done(wait_background_tasks=True)
+
+
+@pytest.mark.parametrize("load_registries", [False])
+async def test_native_migrated_composite_rejected_and_underlying_removal_preserves_other(
+    migrated_composite_ready, hass_ws_client, load_registries
+):
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.setup import async_setup_component
+
+    from tests.lab.cloud import HOME
+
+    hass, entry, other, simulator, old_id = migrated_composite_ready
+    registry = dr.async_get(hass)
+    own_device = registry.async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    other_device = registry.async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), other.entry_id
+    )
+    assert own_device.composite_device_id == other_device.composite_device_id == old_id
+    entity = er.async_get(hass).async_get_or_create(
+        "sensor",
+        "test",
+        "other-unique",
+        config_entry=other,
+        device_id=other_device.id,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    er.async_get(hass).async_update_entity(entity.entity_id, name="Other custom entity")
+    assert await async_setup_component(hass, "config", {})
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "config/device_registry/remove", "device_id": old_id})
+    assert (await client.receive_json())["success"] is False
+    simulator.state["topology_payload"] = {"body": {"homes": [{"id": HOME, "modules": []}]}}
+    simulator.state["status_payload"] = {"body": {"home": {"modules": []}}}
+    due = entry.runtime_data.topology_attempted_at + 300
+    with patch("custom_components.velux_active.coordinator.monotonic", return_value=due):
+        await refresh(hass)
+        await client.send_json(
+            {"id": 2, "type": "config/device_registry/remove", "device_id": own_device.id}
+        )
+        assert (await client.receive_json())["success"] is True
+    await hass.async_block_till_done()
+    assert registry.async_get(own_device.id) is None
+    assert registry.async_get(other_device.id).name_by_user == "Shared custom name"
+    remaining = er.async_get(hass).async_get(entity.entity_id)
+    assert remaining.name == "Other custom entity"
+    assert remaining.disabled_by is er.RegistryEntryDisabler.USER
+    assert remaining.device_id == other_device.id
+    # Registries loaded after HA startup schedule native delayed association cleanup.
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert registry.async_get(other_device.id) is not None
+
+
+async def test_native_child_device_removal_preserves_parent(hass, loaded, hass_ws_client):
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.setup import async_setup_component
+
+    entry, _, _ = loaded
+    registry = dr.async_get(hass)
+    parent = registry.async_get_device_by_identifier(
+        ("velux_active", "lab-gateway"), entry.entry_id
+    )
+    child = registry.async_get_or_create_child(
+        config_entry_id=entry.entry_id,
+        parent_device_id=parent.id,
+        identifiers={("velux_active", "absent-child")},
+        name="Synthetic child",
+    )
+    assert await async_setup_component(hass, "config", {})
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {"id": 1, "type": "config/device_registry/remove", "device_id": child.id}
+    )
+    assert (await client.receive_json())["success"] is True
+    assert registry.async_get(child.id) is None
+    assert registry.async_get(parent.id) is not None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+async def test_contradictory_duplicate_rain_status_fails_atomically_and_recovers(
+    hass, loaded, reverse
+):
+    entry, simulator, _ = loaded
+    rain = er.async_get(hass).async_get_entity_id(
+        "binary_sensor", "velux_active", "lab-gateway_is_raining"
+    )
+    records = [
+        {"id": "lab-gateway", "is_raining": False, "reachable": True},
+        {"id": "lab-gateway", "is_raining": True, "reachable": True},
+    ]
+    if reverse:
+        records.reverse()
+    simulator.state["status_payload"] = {"body": {"home": {"modules": records}}}
+    with pytest.raises(HomeAssistantError):
+        await refresh(hass)
+    assert entry.runtime_data.last_update_success is False
+    assert hass.states.get(rain).state == "unavailable"
+    assert "lab-gateway" in entry.runtime_data.api.status_presence
+    del simulator.state["status_payload"]
+    await refresh(hass)
+    assert hass.states.get(rain).state == "off"

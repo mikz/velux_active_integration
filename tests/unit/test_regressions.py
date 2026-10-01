@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock
 
 from custom_components.velux_active import async_unload_entry
 from custom_components.velux_active.api import AuthToken, VeluxActiveAPI
-from custom_components.velux_active.binary_sensor import VeluxBinarySensor
+from custom_components.velux_active.binary_sensor import (
+    BINARY_SENSOR_DESCRIPTIONS,
+    VeluxBinarySensor,
+)
 
 
 async def test_three_hour_token_is_not_refreshed_after_one_minute():
@@ -32,5 +35,5 @@ def test_rain_sensor_becomes_unavailable_when_poll_fails():
     home = "synthetic-home"
     device = SimpleNamespace(id="gateway", home=home, is_raining=False)
     coordinator = SimpleNamespace(data={home: {"devices": [device]}}, last_update_success=False)
-    entity = VeluxBinarySensor(coordinator, device, "Rain", "is_raining")
+    entity = VeluxBinarySensor(coordinator, device, BINARY_SENSOR_DESCRIPTIONS["is_raining"])
     assert entity.available is False

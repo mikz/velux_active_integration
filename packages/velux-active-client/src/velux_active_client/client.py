@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from math import isfinite
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
+from math import ceil, inf, isfinite, nextafter
 from time import monotonic
 from typing import cast
 
@@ -33,6 +34,25 @@ def required_text(value: JSON) -> str:
     if not isinstance(value, str) or not value:
         raise TypeError("Expected nonempty string")
     return value
+
+
+def complete_object(value: JSON) -> dict[str, JSON]:
+    """Reject explicit partial/error/pagination markers without auth classification."""
+    result = object_value(value)
+    if any(
+        result.get(marker)
+        for marker in (
+            "errors",
+            "error",
+            "partial",
+            "has_more",
+            "next",
+            "next_cursor",
+            "pagination",
+        )
+    ):
+        raise TypeError("Incomplete inventory object")
+    return result
 
 
 def optional_text(value: JSON) -> str | None:
@@ -108,6 +128,31 @@ class RateLimitError(APIConnectionError):
         self.retry_after = retry_after
 
 
+@dataclass
+class RateLimitState:
+    """Caller-shareable endpoint deadline; no identities, credentials or resources."""
+
+    deadline: float = 0.0
+
+
+def retry_delay(value: str) -> int:
+    """Honor ordinary decimal/HTTP dates; bound header parsing, not valid delays."""
+    if not value.isascii() or len(value) > 128:
+        return 60
+    if value.isdecimal():
+        # An oversized decimal is not syntactically invalid. This explicit
+        # resource bound avoids int's conversion limit and unbounded timers.
+        return max(1, int(value)) if len(value) <= 18 else 60
+    try:
+        when = parsedate_to_datetime(value)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        seconds = (when - datetime.now(UTC)).total_seconds()
+    except ValueError, TypeError, OverflowError:
+        return 60
+    return max(1, ceil(seconds))
+
+
 class AuthToken:
     """A token whose representation never contains credentials."""
 
@@ -146,20 +191,32 @@ class VeluxModule:
 class VeluxActiveAPI:
     """Authenticate and poll without sending device commands."""
 
-    def __init__(self, websession: ClientSession, *, base_url: str = API_URL) -> None:
+    def __init__(
+        self,
+        websession: ClientSession,
+        *,
+        base_url: str = API_URL,
+        rate_limit_state: RateLimitState | None = None,
+    ) -> None:
         self._websession = websession
         self._base_url = base_url.rstrip("/")
         self.auth_token: AuthToken | None = None
         self._credentials: tuple[str, str] | None = None
         self._token_lock = asyncio.Lock()
-        self._retry_at = 0.0
+        self._rate_limit = rate_limit_state if rate_limit_state is not None else RateLimitState()
         self._topology: dict[str, dict[str, dict[str, JSON]]] = {}
+        self._status_presence: set[str] = set()
+
+    @property
+    def _retry_at(self) -> float:
+        """Expose the authoritative deadline for compatibility with existing callers."""
+        return self._rate_limit.deadline
 
     async def _request(
         self, path: str, *, data: dict[str, str] | None = None, token: str | None = None
     ) -> dict[str, JSON]:
         if monotonic() < self._retry_at:
-            raise RateLimitError(max(1, int(self._retry_at - monotonic()) + 1))
+            raise RateLimitError(max(1, ceil(self._retry_at - monotonic())))
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         try:
             async with self._websession.request(
@@ -177,10 +234,13 @@ class VeluxActiveAPI:
                 error = payload.get("error") if isinstance(payload, dict) else None
                 code = error.get("code") if isinstance(error, dict) else error
                 if response.status == 429 or code in (26, "26"):
-                    delay = response.headers.get("Retry-After", "60")
-                    retry_after = min(max(int(delay), 1), 3600) if delay.isdigit() else 60
-                    self._retry_at = monotonic() + retry_after
-                    raise RateLimitError(retry_after)
+                    duration = retry_delay(response.headers.get("Retry-After", "60"))
+                    now = monotonic()
+                    deadline = now + duration
+                    if deadline - now < duration:
+                        deadline = nextafter(deadline, inf)
+                    self._rate_limit.deadline = max(self._retry_at, deadline)
+                    raise RateLimitError(max(1, ceil(self._retry_at - now)))
                 if response.status in (401, 403) or code in (
                     1,
                     2,
@@ -280,30 +340,68 @@ class VeluxActiveAPI:
     async def get_home_data(self) -> list[VeluxHome]:
         payload = await self._api_request("/api/homesdata")
         try:
-            homes = array_value(object_value(payload["body"])["homes"])
+            body = complete_object(complete_object(payload)["body"])
+            homes = array_value(body["homes"])
             if not isinstance(homes, list):
                 raise TypeError
             result = []
+            accepted: dict[str, dict[str, dict[str, JSON]]] = {}
+            account_ids: set[str] = set()
             for raw_home in homes:
-                home = object_value(raw_home)
+                home = complete_object(raw_home)
                 home_id = required_text(home["id"])
-                modules = array_value(home.get("modules", []))
+                modules = array_value(home["modules"])
                 if not isinstance(modules, list):
                     raise TypeError
-                self._topology[home_id] = {
-                    required_text(object_value(m)["id"]): object_value(m) for m in modules
-                }
+                if home_id in accepted:
+                    raise TypeError
+                inventory: dict[str, dict[str, JSON]] = {}
+                for raw_module in modules:
+                    module = complete_object(raw_module)
+                    module_id = required_text(module["id"])
+                    required_text(module["type"])
+                    if module_id in account_ids:
+                        raise TypeError
+                    account_ids.add(module_id)
+                    inventory[module_id] = module
+                accepted[home_id] = inventory
                 result.append(VeluxHome(home_id, required_text(home.get("name", "Home"))))
+            self._topology = accepted
+            self._status_presence.clear()
             return result
         except (KeyError, TypeError, AttributeError) as err:
             raise APIConnectionError("VELUX returned invalid home topology") from err
 
+    @property
+    def inventory_ids(self) -> frozenset[str]:
+        """All IDs from the last complete topology, including unsupported models."""
+        return frozenset(module_id for home in self._topology.values() for module_id in home)
+
+    @property
+    def status_presence(self) -> frozenset[str]:
+        """Positive status IDs since accepted inventory, before model normalization."""
+        return frozenset(self._status_presence)
+
     async def get_home_statuses(self, home: VeluxHome) -> list[VeluxModule]:
         payload = await self._api_request("/api/homestatus", {"home_id": home.id})
         try:
-            records = array_value(object_value(object_value(payload["body"])["home"])["modules"])
+            body = object_value(payload["body"])
+            home_record = object_value(body["home"])
+            records = array_value(home_record["modules"])
             if not isinstance(records, list):
                 raise TypeError
+            # Presence is a veto, not a successful observation: malformed siblings
+            # and nested outage markers must not hide valid reported identifiers.
+            for raw_record in records:
+                if isinstance(raw_record, dict):
+                    identifier = raw_record.get("id")
+                    if isinstance(identifier, str) and identifier:
+                        self._status_presence.add(identifier)
+            complete_object(body)
+            complete_object(home_record)
+            identifiers = [required_text(object_value(record)["id"]) for record in records]
+            if len(identifiers) != len(set(identifiers)):
+                raise TypeError("Ambiguous status identity")
             modules = []
             for raw_record in records:
                 record = object_value(raw_record)

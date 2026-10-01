@@ -16,7 +16,7 @@ It exposes gateway rain and status sensors, window and shutter positions, and
 battery diagnostics. Covers report position only. The integration sends no
 window, shutter, gateway, or rain-override commands.
 
-## Install or update
+## Install or update a released version
 
 Requires Home Assistant **2026.9.3 or later**. The test lab covers 2026.9.3 and
 2026.9.4.
@@ -48,19 +48,25 @@ To install manually, extract `velux_active.zip` into
 
 ## Rain data and refresh
 
-The integration loads home topology at setup and polls status every minute.
-Reload it after adding or removing devices in VELUX. The `velux_active.refresh`
+The integration polls status every 60 seconds and attempts account topology at
+setup and every 300 seconds. Added devices appear without a reload, including
+when the account previously had no devices or all existing entities were disabled. The `velux_active.refresh`
 action waits for a completed status update. Concurrent calls share that update.
 It takes no arguments and raises an error on cloud or authentication failure.
 It remains registered after unload and raises a validation error when no account
 is loaded. A Retry-After limit prevents manual calls from bypassing cloud backoff.
+Decimal and HTTP-date Retry-After values retain their full deadline. The integration
+conservatively shares this deadline across its clients in one Home Assistant process,
+including setup retries, password validation, reload and account removal/re-add.
+Trying another account inherits the remaining wait; a process restart clears this
+in-memory state. This policy does not assert how the provider scopes its limits.
 Unloading during a refresh cancels the entry-owned request and reports an error
 to waiting callers.
 
 The rain entity reports the gateway's cloud value. A missing measurement is
 `unknown`; a failed poll or unreachable gateway makes the entity `unavailable`.
-The integration does not substitute a missing measurement with “dry.” Cloud
-reporting can lag the physical sensor, so this value alone does not establish
+The integration does not substitute a missing measurement with “dry.” [VELUX documents that the app rain indication can take up to 15 minutes](https://www.velux.co.uk/support/wiki/active-rain-sensor).
+This provider delay is distinct from our poll interval; this value alone does not establish
 that a window is safe to open. Native VELUX rain protection remains on the device.
 
 ## Installation and configuration parameters
@@ -75,13 +81,33 @@ configure.
 | Email address | Required account login used by the VELUX ACTIVE app. Password renewal keeps this exact login. |
 | Password | Required account password, masked in the form. Home Assistant stores it in the config entry; protect your configuration and backups. |
 
-The polling interval is fixed at one minute. There are no configurable polling,
+Status polling is fixed at 60 seconds and topology attempts at 300 seconds. There are no configurable polling,
 control, or other options. Gateway, window, shutter, and switch data come from
 cloud snapshots. A connectivity sensor remains available with state `off` when
 the cloud successfully reports its device as unreachable. Other measurements
 become unavailable for unreachable or absent devices or failed polls. Missing
 measurements are unknown; numeric zero and boolean false remain valid values.
 Successful later polls restore availability automatically.
+
+Raw Wi-Fi strength, RF strength, and battery level are unitless diagnostics.
+Their former dBm/mV labels lacked verified protocol support. Existing IDs, raw
+values, saved preferences, and recorded history remain; future long-term statistics
+stop for these three readings. A saved unit override stays stored but does not
+convert a unitless reading. Battery percent remains a separate percent measurement.
+Calibration is not labeled a fault, and silent mode is not labeled motor motion.
+
+New registrations disable secondary diagnostics (raw signal/battery level, last
+contact, gateway activity, and silent mode) by default. Rain, cover/position,
+battery percent, and connectivity stay enabled. Existing enabled/disabled choices
+and custom names survive updates. English and Czech entity/error translations are
+included; other languages fall back to English.
+
+Config-entry diagnostics export normalized health/counts and finite timing, not
+provider names, IDs, credentials, tokens, or raw errors. Home Assistant supplies
+its own system/manifest wrapper and entry-based filename; the integration controls
+only its callback data. Device diagnostics are not provided. Authentication
+failures use Home Assistant's existing entry-bound renewal notification; successful
+renewal or entry removal cleans it up.
 
 ## Actions, triggers, and conditions
 
@@ -116,17 +142,89 @@ account and its physical devices stay configured in the VELUX app.
   a new cloud sample; unknown does not mean dry.
 - **Device unavailable:** check the device and gateway in the VELUX app. A successful
   cloud poll can still report a disconnected device.
-- **New device missing:** reload the integration. Topology is loaded at setup;
-  dynamic discovery and stale registry removal are outside this release.
+- **New device missing:** allow the next five-minute topology attempt. An outage
+  can preserve old inventory while status succeeds; check the VELUX app and wait
+  for recovery. Unsupported model IDs are retained for safe removal decisions
+  but do not create entities.
+- **Removed device still registered:** Home Assistant owns manual removal. Open
+  its device menu after a fresh complete inventory no longer reports it. Removal
+  is denied during stale, failed, partial or contradicted inventory. Devices are
+  never automatically deleted; a reappearing device can register again.
 - **Refresh rejected after unload:** reload or enable the account before calling
   the action. A failed unload follows Home Assistant's `failed_unload` state;
   restart Home Assistant to recover that framework state.
 
 This remains a **Custom** community integration. The local
 [quality ledger](custom_components/velux_active/quality_scale.yaml) tracks the
-20 Bronze and 10 Silver engineering rules. It does not assign an official Home
-Assistant certification. Full translations, diagnostics, dynamic discovery,
-stale device cleanup, and an external client package remain separate work.
+54 Bronze, Silver, Gold and Platinum engineering rules with named evidence and
+open acceptance gates. It does not assign official Home Assistant certification.
+The [acceptance matrix](docs/PLATINUM_ACCEPTANCE.md) separates locally tested work
+from final artifact checks, user-deferred public distribution and Core acceptance.
+
+
+## Supported devices and functions
+
+The current parser recognizes these cloud records; this is not a guarantee for
+all VELUX hardware or firmware revisions.
+
+| Cloud model | Supported observations |
+| --- | --- |
+| NXG gateway | Rain, lock/movement/busy/calibration status, Wi-Fi strength and last-seen time when supplied. |
+| NXO with `velux_type=window` | Read-only window position, reachability, silent state and reported firmware/last-seen time. |
+| NXO with `velux_type=shutter` | Read-only shutter position and the same reported connectivity/status fields. |
+| NXS / NXD | Reported battery and radio/connectivity diagnostics. |
+| Other types | Inventory presence only; no entities are created. |
+
+Available fields depend on the cloud snapshot. This integration has no open,
+close, stop, set-position, rain-override or device configuration action. It does
+not provide the local HomeKit connection or replace native VELUX protection.
+
+## Use cases and automation examples
+
+Use cloud observations to notify about reported rain, inspect window/shutter
+positions, or identify missing battery/connectivity measurements. Handle rain
+`unknown` and `unavailable` explicitly. Neither an `off` cloud state nor a recent
+poll grants permission to open a window.
+
+Replace the example entity ID with your registered rain entity. This notification
+example reports rain and loss of evidence, and sends no physical commands:
+
+```yaml
+alias: VELUX cloud rain notification
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.example_gateway_is_raining
+    to: "on"
+  - trigger: state
+    entity_id: binary_sensor.example_gateway_is_raining
+    to: "unknown"
+  - trigger: state
+    entity_id: binary_sensor.example_gateway_is_raining
+    to: "unavailable"
+actions:
+  - action: persistent_notification.create
+    data:
+      title: VELUX cloud rain status
+      message: >-
+        {% if is_state('binary_sensor.example_gateway_is_raining', 'on') %}
+          The cloud gateway reports rain. Check the VELUX app and local conditions.
+        {% elif is_state('binary_sensor.example_gateway_is_raining', 'unknown') %}
+          The cloud response has no rain measurement. Rain status is unknown.
+        {% else %}
+          Rain status is unavailable. Check cloud connectivity and the gateway.
+        {% endif %}
+```
+
+## Known limitations
+
+The cloud API is unofficial and can change. One existing VELUX app account is
+supported, with password renewal bound to that login. HomeKit-only setup does not
+establish a cloud account. Status success does not certify cloud freshness or
+successful topology discovery; a topology outage can leave accepted inventory
+unchanged until a later five-minute attempt. See
+[the topology contract](docs/TOPOLOGY_CONTRACT.md) for the account-inventory
+inference and conservative manual-removal rules. Cloud measurements omit fields
+on some devices; zero and false are valid, while missing/null rain is unknown.
 
 ## Develop and test
 
@@ -135,7 +233,9 @@ series. From this repository, install the locked test environment and run checks
 
 ```sh
 uv sync --locked
-uv run pytest --cov=custom_components.velux_active --cov-branch --cov-report=json:artifacts/source-coverage.json
+uv run python scripts/prepare_client_artifacts.py
+uv run mypy --cache-dir=/dev/null
+uv run pytest --cov=custom_components.velux_active --cov=velux_active_client --cov-branch --cov-report=json:artifacts/source-coverage.json
 uv run python scripts/check_coverage.py artifacts/source-coverage.json
 uv run ruff check .
 uv run ruff format --check .
@@ -156,13 +256,17 @@ Build the release archive and prepare the images before starting the isolated
 runtime:
 
 ```sh
+uv run python scripts/prepare_client_artifacts.py
 uv run python scripts/release.py build
 uv run python scripts/lab.py prepare --ha-version 2026.9.4
 uv run python scripts/lab.py test --ha-version 2026.9.4
 ```
 
-Use `--ha-version 2026.9.3` for the other supported test target. Rebuild the archive
-and prepare images again after editing the integration or lab. The controller
+Use `--ha-version 2026.9.3` for the other supported test target. Prepare versions
+sequentially because the checkout shares synthetic TLS build inputs. Rebuild both
+artifacts and prepare images again after editing installed integration/client bytes.
+The local client wheel is preinstalled non-editably; the exact manifest pin and
+installed member hashes are verified before native Home Assistant starts. The controller
 rejects a stale archive or prepared image.
 
 The simulator implements login, rotating tokens, home topology, and status over
@@ -178,7 +282,8 @@ WebSocket APIs. It checks rain changes, missing data, gateway disconnection,
 cloud outages, throttling, token recovery, reload, restart, and reauthentication.
 
 Each run writes sanitized results under `artifacts/lab/<run-id>/`. Results include
-the HA version, archive digest, isolation receipts, scenario outcomes, and logs.
+the HA/Python/dependency versions, ZIP and wheel digests, installed client member
+hashes, isolation receipts, scenario outcomes and logs.
 A passing lab proves behavior against the simulated protocol. It does not prove
 that a particular real account can authenticate or that cloud rain data is fresh.
 

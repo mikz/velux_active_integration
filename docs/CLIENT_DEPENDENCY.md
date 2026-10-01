@@ -1,3 +1,10 @@
+> Current scope: the user requires the client in `packages/velux-active-client`
+> and has deferred publication, publisher/environment configuration and tags.
+> This phase validates the exact local wheel with the integration ZIP. Any future
+> publishing instructions below are preparation only, not authorized execution.
+> The unpublished pin requires that matching wheel; the ZIP is not an ordinary
+> standalone HACS installation. Public distribution and Core acceptance remain open.
+
 # Client dependency decision and distribution gates
 
 This is the M2b comparison checkpoint, dated 2026-10-01. The integration remains

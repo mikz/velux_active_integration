@@ -24,6 +24,10 @@
           "username": "Email address",
           "password": "Password"
         }
+      },
+      "discovery_confirm": {
+        "title": "VELUX ACTIVE cloud account",
+        "description": "A VELUX gateway was detected. Continue to sign in to an existing VELUX ACTIVE app account. This does not verify that the detected gateway belongs to your account; local HomeKit setup remains available separately."
       }
     },
     "error": {
@@ -34,13 +38,84 @@
     "abort": {
       "single_instance_allowed": "Only one VELUX ACTIVE account can be configured.",
       "reauth_successful": "Authentication was successful.",
-      "reconfigure_successful": "Configuration updated."
+      "reconfigure_successful": "Configuration updated.",
+      "not_supported": "This advertisement is not a supported VELUX gateway.",
+      "already_configured": "A VELUX ACTIVE account is already configured.",
+      "already_in_progress": "VELUX ACTIVE account setup is already in progress."
     }
   },
   "services": {
     "refresh": {
       "name": "Refresh",
       "description": "Request fresh cloud status for all configured homes."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "wifi_strength": {
+        "name": "Wi-Fi Strength"
+      },
+      "rf_strength": {
+        "name": "RF Strength"
+      },
+      "battery_level": {
+        "name": "Battery Level"
+      },
+      "battery_percent": {
+        "name": "Battery Percent"
+      },
+      "last_seen": {
+        "name": "Last Seen"
+      },
+      "target_position": {
+        "name": "Target Position"
+      },
+      "rain_position": {
+        "name": "Rain Position"
+      }
+    },
+    "binary_sensor": {
+      "is_raining": {
+        "name": "Is Raining"
+      },
+      "unlocked": {
+        "name": "Locked"
+      },
+      "locking": {
+        "name": "Locking"
+      },
+      "calibrating": {
+        "name": "Calibrating"
+      },
+      "busy": {
+        "name": "Busy"
+      },
+      "reachable": {
+        "name": "Reachable"
+      },
+      "silent": {
+        "name": "Silent Mode"
+      }
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "No VELUX ACTIVE account is loaded"
+    },
+    "unloaded": {
+      "message": "VELUX ACTIVE was unloaded during refresh"
+    },
+    "refresh_failed": {
+      "message": "VELUX ACTIVE cloud refresh failed"
+    },
+    "invalid_auth": {
+      "message": "VELUX login must be renewed"
+    },
+    "cannot_connect": {
+      "message": "Cannot fetch VELUX cloud data"
+    },
+    "rate_limited": {
+      "message": "VELUX cloud requests are temporarily rate limited"
     }
   }
 }

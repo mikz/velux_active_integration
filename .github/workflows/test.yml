@@ -43,5 +43,6 @@ jobs:
       - run: uv sync --locked
       - run: uv run python scripts/prepare_client_artifacts.py
       - run: python scripts/release.py build
+      - run: uv run pytest scripts/generate_legacy_recorder.py -q
       - run: python scripts/lab.py prepare --ha-version '${{ matrix.ha }}'
       - run: python scripts/lab.py test --ha-version '${{ matrix.ha }}'

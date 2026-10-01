@@ -43,7 +43,13 @@ class Lab:
     async def request(self, method, path, data=None):
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
         async with self.session.request(
-            method, self.base + path, json=data, headers=headers
+            method,
+            self.base + path,
+            json=data,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=180)
+            if path.startswith("/api/services/lab_probe/")
+            else None,
         ) as resp:
             # Never include a response body that could contain credentials in an error.
             assert resp.status < 400, f"HA {method} {path}: HTTP {resp.status}"
@@ -58,6 +64,20 @@ class Lab:
             result = await ws.receive_json()
             assert result.get("success"), f"HA WebSocket {command} failed"
             return result.get("result")
+
+    async def probe(self, case):
+        result = await self.request(
+            "POST", "/api/services/lab_probe/run?return_response", {"case": case}
+        )
+        return result["service_response"]
+
+    async def ws_failure(self, command, **fields):
+        async with self.session.ws_connect(self.base + "/api/websocket") as ws:
+            assert (await ws.receive_json())["type"] == "auth_required"
+            await ws.send_json({"type": "auth", "access_token": self.token})
+            assert (await ws.receive_json())["type"] == "auth_ok"
+            await ws.send_json({"id": 1, "type": command, **fields})
+            assert not (await ws.receive_json())["success"]
 
     async def sim(self, changes=None):
         async with self.session.request(
@@ -116,6 +136,19 @@ class Lab:
     async def loaded(self):
         entries = await self.ws("config_entries/get")
         return any(e["entry_id"] == self.entry and e["state"] == "loaded" for e in entries)
+
+    async def restart(self):
+        """Start a new HA process after virtual deadlines; never reset the gate."""
+        nonce = secrets.token_hex(6)
+        (CONTROL / f"request-{nonce}.json").write_text(
+            json.dumps(
+                {"run_id": os.environ["LAB_RUN_ID"], "action": "restart", "request_id": nonce}
+            )
+        )
+        await eventually(
+            lambda: asyncio.to_thread((CONTROL / f"ack-{nonce}.json").exists), timeout=120
+        )
+        await eventually(self.loaded, timeout=120)
 
     async def registry(self):
         return {
@@ -224,6 +257,49 @@ class Lab:
             with zipfile.ZipFile("/opt/velux-active/velux_active.zip") as archive:
                 assert payload == archive.read("brand/icon.png")
 
+        async with self.scenario("native-installed-member-and-client-origin-proof"):
+            self.native_proof = await self.probe("proof")
+            assert (
+                self.native_proof["client"]["wheel_sha256"] == os.environ["LAB_CLIENT_WHEEL_SHA256"]
+            )
+
+        async with self.scenario("pre-candidate-recorder-history-and-unit-preferences"):
+            self.statistics_proof = await self.probe("statistics")
+            assert self.statistics_proof["prior_hourly_samples_retained"] == 3
+            assert self.statistics_proof["battery_percent_positive_control"]
+
+        async with self.scenario("native-migrated-composite-and-child-removal"):
+            registry = await self.probe("registry")
+            before_entities = [
+                record
+                for record in await self.ws("config/entity_registry/list")
+                if record["entity_id"] == "sensor.other_retained"
+            ]
+            before_devices = [
+                record
+                for record in await self.ws("config/device_registry/list")
+                if record["id"] == registry["other"]
+            ]
+            assert len(before_entities) == len(before_devices) == 1
+            await self.ws_failure("config/device_registry/remove", device_id=registry["composite"])
+            await self.ws("config/device_registry/remove", device_id=registry["own"])
+            await self.ws("config/device_registry/remove", device_id=registry["child"])
+            assert [
+                record
+                for record in await self.ws("config/entity_registry/list")
+                if record["entity_id"] == "sensor.other_retained"
+            ] == before_entities
+            retained = [
+                record
+                for record in await self.ws("config/device_registry/list")
+                if record["id"] == registry["other"]
+            ]
+            assert retained[0]["name_by_user"] == before_devices[0]["name_by_user"]
+            assert any(
+                record["id"] == registry["parent"]
+                for record in await self.ws("config/device_registry/list")
+            )
+
         async with self.scenario("rain-transitions-and-missing-measurement"):
             await self.sim({"rain": True})
             await self.refresh("on")
@@ -231,6 +307,52 @@ class Lab:
             await self.refresh("unknown")
             await self.sim({"omit_rain": False, "rain": False})
             await self.refresh("off")
+
+        async with self.scenario("strict-wire-rain-and-duplicate-status-failures"):
+            for invalid in ([], {}, "", "false", 0, 1, "true"):
+                await self.sim({"rain": invalid})
+                await self.refresh_failure()
+            for value, expected in ((None, "unknown"), (False, "off"), (True, "on")):
+                await self.sim({"rain": value})
+                await self.refresh(expected)
+            for reverse in (False, True):
+                records = [
+                    {"id": "lab-gateway", "is_raining": False},
+                    {"id": "lab-gateway", "is_raining": True},
+                ]
+                await self.sim(
+                    {
+                        "status_payload": {
+                            "body": {"home": {"modules": records[::-1] if reverse else records}}
+                        }
+                    }
+                )
+                await self.refresh_failure()
+            await self.sim({"reset_payloads": True, "rain": False})
+            await self.refresh("off")
+
+        async with self.scenario("native-entry-diagnostics-privacy"):
+            async with self.session.get(
+                self.base + f"/api/diagnostics/config_entry/{self.entry}",
+                headers={"Authorization": f"Bearer {self.token}"},
+            ) as response:
+                assert response.status == 200 and response.content_type == "application/json"
+                assert "Synthetic legacy account" not in response.headers.get(
+                    "Content-Disposition", ""
+                )
+                report = await response.json()
+            assert report["data"]["supported_model_counts"] == {
+                "gateway": 1,
+                "window": 1,
+                "shutter": 1,
+                "sensor": 1,
+            }
+            encoded = json.dumps(report["data"])
+            assert all(
+                value not in encoded
+                for value in (USERNAME, PASSWORD, "lab-home", "lab-gateway", "VELUX Lab")
+            )
+            assert "home_assistant" in report and "integration_manifest" in report
 
         async with self.scenario("unreachable-gateway-and-recovery"):
             await self.sim({"reachable": False})
@@ -302,6 +424,14 @@ class Lab:
                 ]
 
             flows = await eventually(reauth)
+            assert len(flows) == 1
+            issues = await self.ws("repairs/list_issues")
+            matching = [
+                issue
+                for issue in issues["issues"]
+                if issue["issue_id"] == f"config_entry_reauth_velux_active_{self.entry}"
+            ]
+            assert len(matching) == 1 and matching[0]["issue_domain"] == "velux_active"
             result = await self.request(
                 "POST",
                 "/api/config/config_entries/flow/" + flows[0]["flow_id"],
@@ -309,6 +439,11 @@ class Lab:
             )
             assert result["reason"] == "reauth_successful"
             await eventually(self.loaded)
+            issues = await self.ws("repairs/list_issues")
+            assert all(
+                issue["issue_id"] != f"config_entry_reauth_velux_active_{self.entry}"
+                for issue in issues["issues"]
+            )
             await eventually(self.state, lambda value: value == "on")
             assert await self.registry() == self.original_ids
             assert await self.preferences() == self.original_preferences
@@ -341,10 +476,183 @@ class Lab:
             await self.sim({"rain": True})
             await self.refresh("on")
 
+        async with self.scenario("raw-homekit-router-and-native-cloud-confirmation"):
+            await self.request("DELETE", f"/api/config/config_entries/entry/{self.entry}")
+            await self.sim({"rain": False})
+            result = await self.probe("discovery")
+            assert len(result["routes"]) == 4 and result["unverified_variant_rejected"]
+            self.discovery_routes = result["routes"]
+            path = "/api/config/config_entries/flow/" + result["flow_id"]
+            confirmation = await self.request("POST", path, {})
+            assert confirmation["step_id"] == "user"
+            wrong = await self.request("POST", path, {"username": USERNAME, "password": "wrong"})
+            assert wrong["errors"]["base"] == "invalid_auth"
+            created = await self.request("POST", path, {"username": USERNAME, "password": PASSWORD})
+            assert created["type"] == "create_entry"
+            self.entry = created["result"]["entry_id"]
+            await eventually(self.loaded)
+            self.rain = (await self.registry())["lab-gateway_is_raining"]
+            await self.refresh("off")
+
+        async with self.scenario("native-localized-entity-and-new-registration-defaults"):
+            defaults = await self.probe("new-defaults")
+            assert defaults["new_only_defaults_verified"]
+            original_rain = self.rain
+            self.rain = defaults["rain_entity_id"]
+            before = await self.registry()
+            records = [
+                record
+                for record in await self.ws("config/entity_registry/list")
+                if record["config_entry_id"] == self.entry
+                and record["unique_id"].startswith("never-seen-localized_")
+            ]
+            assert any(
+                record["unique_id"].endswith("_last_seen")
+                and record["disabled_by"] == "integration"
+                for record in records
+            )
+            assert (
+                next(
+                    record
+                    for record in records
+                    if record["unique_id"] == "never-seen-localized_is_raining"
+                )["disabled_by"]
+                is None
+            )
+            await self.ws("config/core/update", language="cs")
+            await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
+            await eventually(self.loaded)
+            localized = await self.request("GET", "/api/states/" + self.rain)
+            assert localized["attributes"]["friendly_name"] == "New Gateway Déšť"
+            assert await self.registry() == before
+            await self.ws("config/core/update", language="en")
+            await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
+            await eventually(self.loaded)
+            await self.refresh("off")
+            await self.sim({"reset_payloads": True})
+            await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
+            await eventually(self.loaded)
+            await self.ws("config/device_registry/remove", device_id=defaults["device_id"])
+            self.rain = original_rain
+            await self.refresh("off")
+
+        async with self.scenario("logical-clock-topology-and-native-stale-removal"):
+            result = await self.probe("topology")
+            assert len(result["checks"]) == 12
+            await self.ws("config/device_registry/remove", device_id=result["dynamic_device_id"])
+            assert result["dynamic_entity_id"] not in {
+                state["entity_id"] for state in await self.request("GET", "/api/states")
+            }
+            self.logical_clock_checks = result["checks"]
+            reappeared = await self.probe("reappear")
+            assert reappeared["one_live_entity"] and reappeared["no_permanent_suppression"]
+            self.reappearance_proof = reappeared
+            await self.ws("config/device_registry/remove", device_id=reappeared["device_id"])
+            # Full native restart separates virtual decisions from final real-time work.
+            nonce = secrets.token_hex(6)
+            (CONTROL / f"request-{nonce}.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": os.environ["LAB_RUN_ID"],
+                        "action": "restart",
+                        "request_id": nonce,
+                    }
+                )
+            )
+            await eventually(
+                lambda: asyncio.to_thread((CONTROL / f"ack-{nonce}.json").exists), timeout=120
+            )
+            await eventually(self.loaded, timeout=120)
+            await self.sim({"rain": False})
+            await self.refresh("off")
+
+        async with self.scenario("logical-clock-raw-multi-home-http-budgets"):
+            self.budget_proof = await self.probe("budgets")
+            assert self.budget_proof["global_429_no_http"]
+            assert self.budget_proof["account_wide_duplicates_rejected"]
+            await self.restart()
+            await self.refresh("off")
+
+        self.retry_proofs = []
+        for endpoint in ("auth", "topology"):
+            async with self.scenario("native-setup-retry-shared-deadline-" + endpoint):
+                proof = await self.probe("retry-" + endpoint)
+                assert proof["native_retry_after_six_seconds_no_http"]
+                assert proof["expiry_accepts_fresh_credentials"]
+                self.retry_proofs.append(proof)
+                await self.restart()
+                await self.refresh("off")
+
+        async with self.scenario("zero-entity-native-polling-discovers-without-manual-refresh"):
+            await self.request("DELETE", f"/api/config/config_entries/entry/{self.entry}")
+            await self.sim({"topology_payload": {"body": {"homes": []}}})
+            flow = await self.request(
+                "POST", "/api/config/config_entries/flow", {"handler": "velux_active"}
+            )
+            result = await self.request(
+                "POST",
+                "/api/config/config_entries/flow/" + flow["flow_id"],
+                {"username": USERNAME, "password": PASSWORD},
+            )
+            self.entry = result["result"]["entry_id"]
+            await eventually(self.loaded)
+            assert not await self.registry()
+            self.zero_entity_proof = await self.probe("automatic")
+            assert (
+                self.zero_entity_proof["native_timer_discovered"]
+                and self.zero_entity_proof["manual_requests"] == 0
+            )
+            self.rain = (await self.registry())["lab-gateway_is_raining"]
+            await self.refresh("off")
+
+        async with self.scenario("all-disabled-native-polling-discovers-without-manual-refresh"):
+            records = [
+                record
+                for record in await self.ws("config/entity_registry/list")
+                if record["config_entry_id"] == self.entry
+            ]
+            enabled_records = [record for record in records if record["disabled_by"] is None]
+            for record in enabled_records:
+                await self.ws(
+                    "config/entity_registry/update",
+                    entity_id=record["entity_id"],
+                    disabled_by="user",
+                )
+            await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
+            await eventually(self.loaded)
+            self.all_disabled_proof = await self.probe("automatic")
+            assert (
+                self.all_disabled_proof["native_timer_discovered"]
+                and self.all_disabled_proof["manual_requests"] == 0
+            )
+            # Already disabled integration/user choices were never overwritten.
+            for record in enabled_records:
+                await self.ws(
+                    "config/entity_registry/update",
+                    entity_id=record["entity_id"],
+                    disabled_by=record["disabled_by"],
+                )
+            await self.request("POST", f"/api/config/config_entries/entry/{self.entry}/reload", {})
+            await eventually(self.loaded)
+            await self.refresh("off")
+
+        async with self.scenario("native-unload-owned-resource-and-probe-cleanup"):
+            self.cleanup_proof = await self.probe("cleanup")
+            assert self.cleanup_proof == {
+                "candidate_listeners": 0,
+                "candidate_pending_manual": 0,
+                "shared_session_open": True,
+                "probe_service_removed": True,
+                "cancelled_waiter_did_not_cancel_shared_work": True,
+                "unload_returns_action_error_to_waiter": True,
+            }
+            await self.refresh("off")
+
         (ARTIFACTS / "acceptance.json").write_text(
             json.dumps(
                 {
                     "ha_version": os.environ["LAB_HA_VERSION"],
+                    "source_revision": os.environ["LAB_SOURCE_REVISION"],
                     "scenarios": self.results,
                     "artifact_sha256": os.environ["LAB_ARTIFACT_SHA256"],
                     "client_wheel_sha256": os.environ["LAB_CLIENT_WHEEL_SHA256"],
@@ -352,9 +660,25 @@ class Lab:
                         await asyncio.to_thread((CONTROL / "client-proof.json").read_text)
                     ),
                     "scope": "local validation candidate; requires the matching local wheel",
+                    "native_proof": self.native_proof,
+                    "statistics_proof": self.statistics_proof,
+                    "discovery_routes": self.discovery_routes,
+                    "logical_clock_checks": self.logical_clock_checks,
+                    "reappearance_proof": self.reappearance_proof,
+                    "cleanup_proof": self.cleanup_proof,
+                    "zero_entity_proof": self.zero_entity_proof,
+                    "all_disabled_proof": self.all_disabled_proof,
                     "entities": self.original_ids,
                     "registry_preferences": self.original_preferences,
-                    "cloud_counts": (await self.sim())["counts"],
+                    "request_counts": {
+                        "credential_grants": (await self.sim())["counts"]["password"],
+                        "renewal_grants": (await self.sim())["counts"].get("refresh_token", 0),
+                        "status_requests": (await self.sim())["counts"]["homestatus"],
+                        "topology_requests": (await self.sim())["counts"]["homesdata"],
+                        "authentication_requests": (await self.sim())["counts"]["token_requests"],
+                    },
+                    "budget_proof": self.budget_proof,
+                    "setup_retry_proofs": self.retry_proofs,
                 },
                 indent=2,
             )

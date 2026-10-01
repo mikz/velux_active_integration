@@ -1,4 +1,5 @@
-# Local Custom integration engineering ledger; official/Core recognition is separate.
+# Local Custom integration source-conformance ledger; final artifact acceptance is tracked
+# outside this payload in docs/PLATINUM_ACCEPTANCE.md. Official/Core recognition is separate.
 rules:
   action-setup:
     status: done
@@ -22,8 +23,8 @@ rules:
     comment: Native UI user/password renewal flows in config_flow.py; test_native_user_flow_distinguishes_authentication_from_outage.
   dependency-transparency:
     status: done
-    comment: Public MIT inline api.py and HA-provided dependencies documented in CONTRIBUTING Dependency and asset provenance;
-      no empty-requirements exemption.
+    comment: Public MIT packages/velux-active-client owns the protocol; exact manifest pin and local wheel provenance in
+      CONTRIBUTING. Public distribution and ordinary HACS installation are user-deferred, not exemptions.
   docs-actions:
     status: done
     comment: README Actions, triggers, and conditions and Rain data and refresh describe zero-argument refresh, completed
@@ -48,9 +49,8 @@ rules:
     comment: CoordinatorEntity supplies subscriptions in native lifecycle; test_failed_unload_preserves_resources_and_successful_unload_cancels_owned_work
       and native pytest cleanup checks.
   entity-unique-id:
-    status: todo
-    comment: 'R1-identity-oracle: existing formula unchanged but test does not reject live duplicate/missing original state.
-      M0 owner validation required.'
+    status: done
+    comment: test_synthetic_legacy_v1_registry_preserved_by_update_reload_and_reauth verifies complete live original inventory; test_legacy_identity_oracle_rejects_deliberate_rain_unique_id_mutation rejects a duplicate-ID regression.
   has-entity-name:
     status: done
     comment: entity.py sets has_entity_name, entity-only measurement names and cover name=None; test_missing_devices_and_measurements_never_retain_previous_snapshot.
@@ -86,15 +86,14 @@ rules:
     comment: README Installation and configuration parameters lists gateway/account, HA version and HTTPS prerequisites; no
       local address or OAuth registration.
   entity-unavailable:
-    status: todo
-    comment: 'R1-boolean: invalid wire booleans currently coerce to plausible rain states. M0 owner validation required.'
+    status: done
+    comment: test_invalid_wire_rain_fails_native_refresh_and_recovers and test_omitted_known_device_logs_one_outage_and_recovery cover malformed/missing/disconnected observations and recovery.
   integration-owner:
     status: done
     comment: manifest codeowners includes @mikz and issue_tracker links this repository.
   log-when-unavailable:
-    status: todo
-    comment: 'R1-device-logs: native cloud logs exist, device disconnection/recovery logs are missing. M0 owner validation
-      required.'
+    status: done
+    comment: test_unknown_reachability_uses_effective_availability_transition and omission tests prove one anonymous device transition pair; native coordinator cloud logging remains separate.
   parallel-updates:
     status: done
     comment: PARALLEL_UPDATES=0 in all three read-only coordinator platforms; shared refresh test proves one concurrent cloud
@@ -108,74 +107,76 @@ rules:
     comment: Locked source CI runs branch coverage over all integration modules and check_coverage.py requires each module
       above 95%; config_flow requires 100%.
   devices:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: async_register_devices registers observed account devices and relationships; test_existing_device_home_move_keeps_original_live_entity preserves stable identity across home changes.
   diagnostics:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_diagnostics_allowlist_omits_provider_credentials_names_and_errors and test_native_diagnostics_response_scopes_owned_data_and_export_metadata prove allowlisted data and scoped native export privacy; config-entry only.
   discovery-update-info:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: exempt
+    comment: Cloud transport uses a fixed endpoint; no discovered address is persisted or used.
+      test_discovery_confirmation_login_failure_recovery_and_no_lan_account_binding verifies changed-address rediscovery.
+      Current Core 2026.9.4 Sensibo quality ledger provides the same cloud-only exemption; see docs/DISCOVERY_EVIDENCE.md.
   discovery:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_discovery.py exercises exact raw TXT routing, paired/unpaired HomeKit coexistence, confirmation, account validation and simultaneous native flow completion; see docs/DISCOVERY_EVIDENCE.md.
   docs-data-update:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Data updates and availability documents separate 60-second status and 300-second topology attempts, failure retention and manual batches.
   docs-examples:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Examples provides a read-only notification automation with explicit unknown/unavailable handling.
   docs-known-limitations:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Known limitations documents cloud rain delay, read-only scope, single account, unsupported types and deferred distribution.
   docs-supported-devices:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Supported devices and functions lists NXG, NXO window/shutter and NXS/NXD plus unsupported inventory-only types.
   docs-supported-functions:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Supported devices and functions and Actions document read-only platforms and zero-argument refresh.
   docs-troubleshooting:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Troubleshooting covers account renewal, outages, rate limits, missing readings and safe diagnostic scope.
   docs-use-cases:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: README Use cases describes notifications and observational history, never cloud-dry permission to open.
   dynamic-devices:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_dynamic_device_addition_updates_registry_without_reload, test_empty_account_keeps_entry_discovery_listener and test_all_disabled_entities_keep_native_polling_and_discovery cover lifecycle and topology updates.
   entity-category:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_new_diagnostic_defaults_and_useful_measurements verifies typed diagnostic categories without rewriting existing preferences.
   entity-device-class:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_metadata.py verifies battery percent and the explicit unitless raw diagnostics correction; calibration and silent mode retain booleans without unsupported problem/running semantics.
   entity-disabled-by-default:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_new_diagnostic_defaults_and_useful_measurements proves new secondary defaults; test_legacy_raw_diagnostics_keep_ids_options_and_historical_statistics preserves existing enablement/options.
   entity-translations:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_native_published_entity_uses_locale_without_changing_identity verifies English/Czech/fallback names and stable unique IDs.
   exception-translations:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_native_entity_and_exception_translation_with_fallback verifies exception catalogs; action/setup exceptions use native translation_domain/key.
   icon-translations:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: icons.json supplies raw signal/battery, calibration and silent-mode icons where verified device classes do not apply; device-class icons remain native.
   reconfiguration-flow:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_account_renewal_rejects_switch_and_preserves_credentials_on_failures verifies same-login password renewal, failure preservation and recovery.
   repair-issues:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_native_reauth_repair_is_entry_bound_deduplicated_and_cleans_up uses native entry-bound corrective flow, successful renewal and removal cleanup; no duplicate custom issue.
   stale-devices:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: test_manual_removal_requires_fresh_complete_uncontradicted_inventory plus native composite/child/removal/reappearance tests verify conservative permission; HA owns deletion. See docs/TOPOLOGY_CONTRACT.md.
   async-dependency:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: packages/velux-active-client is the sole typed async aiohttp protocol implementation; HTTP regressions and test_request_budget.py enforce bounded retries/rotation/global backoff. Public distribution is user-deferred.
   inject-websession:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: Client accepts an injected aiohttp session without closing it; HA supplies async_get_clientsession. Native unload and artifact smoke tests cover lifecycle; no runtime session factory or custom installer.
   strict-typing:
-    status: todo
-    comment: P2 acceptance pending; see docs/PLATINUM_PLAN.md and docs/PLATINUM_ACCEPTANCE.md.
+    status: done
+    comment: Strict mypy checks every owned integration/client module with no blanket exclusions or Any leaks; tests/unit/test_typing.py verifies positive and negative typed consumers.

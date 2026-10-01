@@ -4,9 +4,10 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers import aiohttp_client, selector
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import APIConnectionError, InvalidAuthError, VeluxActiveAPI
-from .const import DOMAIN
+from .const import DOMAIN, HOMEKIT_MODELS, async_rate_limit_state
 from .coordinator import VeluxActiveConfigEntry
 
 
@@ -14,6 +15,26 @@ class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
     """Keep the original username/password storage and version-one identity."""
 
     VERSION = 1
+
+    async def async_step_homekit(self, discovery_info: ZeroconfServiceInfo) -> ConfigFlowResult:
+        """Offer existing cloud-account sign-in, without trusting a LAN identity."""
+        model: object = discovery_info.properties.get("md")
+        if (
+            discovery_info.type != "_hap._tcp.local."
+            or not isinstance(model, str)
+            or model not in HOMEKIT_MODELS
+        ):
+            return self.async_abort(reason="not_supported")
+        return await self.async_step_discovery_confirm()
+
+    async def async_step_discovery_confirm(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        """Use HA's no-account-identity discovery convention and native dedup."""
+        if user_input is not None:
+            return await self.async_step_user()
+        await self._async_handle_discovery_without_unique_id()
+        return self.async_show_form(step_id="discovery_confirm", data_schema=vol.Schema({}))
 
     async def _form(
         self,
@@ -26,7 +47,10 @@ class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
             if entry is not None and user_input[CONF_USERNAME] != entry.data[CONF_USERNAME]:
                 errors["base"] = "wrong_account"
             else:
-                api = VeluxActiveAPI(aiohttp_client.async_get_clientsession(self.hass))
+                api = VeluxActiveAPI(
+                    aiohttp_client.async_get_clientsession(self.hass),
+                    rate_limit_state=async_rate_limit_state(self.hass),
+                )
                 try:
                     await api.authenticate(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
                     await api.get_home_data()

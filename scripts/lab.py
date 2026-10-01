@@ -80,6 +80,9 @@ def lab_source_hashes():
     files = [
         ROOT / "scripts/lab.py",
         ROOT / "scripts/cloud_smoke.py",
+        ROOT / "scripts/client_release.py",
+        ROOT / "scripts/generate_legacy_recorder.py",
+        ROOT / ".lab/legacy-recorder.db",
         ROOT / "tests/__init__.py",
         ROOT / "uv.lock",
     ]
@@ -182,6 +185,10 @@ def _prepare(args):
         raise RuntimeError("Client wheel changed during image preparation; run prepare again")
     receipt = {
         "ha_version": args.ha_version,
+        "source_revision": output(["git", "rev-parse", "HEAD"]),
+        "source_worktree_dirty": bool(
+            output(["git", "status", "--porcelain", "--untracked-files=no"])
+        ),
         "artifact_sha256": digest,
         "client_wheel_sha256": client_digest,
         "client_version": client_version,
@@ -288,6 +295,7 @@ def run_lab(args):
             "LAB_SCENARIO": args.scenario,
             "LAB_ARTIFACT_SHA256": archive_digest,
             "LAB_CLIENT_WHEEL_SHA256": client_digest,
+            "LAB_SOURCE_REVISION": receipt["source_revision"],
             "HA_LAB_IMAGE": receipt["images"]["ha"],
             "SIM_LAB_IMAGE": receipt["images"]["simulator"],
             "RUNNER_LAB_IMAGE": receipt["images"]["runner"],
@@ -307,6 +315,8 @@ def run_lab(args):
         "ha_version": args.ha_version,
         "artifact_sha256": archive_digest,
         "client_wheel_sha256": client_digest,
+        "source_revision": receipt["source_revision"],
+        "source_worktree_dirty": receipt["source_worktree_dirty"],
         "scope": receipt["scope"],
         "docker_engine": engine,
         "scenario": args.scenario,

@@ -176,7 +176,20 @@ default only for new registrations. Existing enable/disable/name preferences
 survive updates. Covers retain main-entity naming; rain/positions stay useful by
 default. Translate entities/exceptions, ship English plus a second locale and
 fallback tests; add icons.json only when device classes are insufficient. Preserve
-IDs and statistics semantics. Prove results through installed-package/browser use.
+IDs and historical statistics. Prove results through installed-package/browser use.
+
+Owner-approved M5 correction: raw `wifi_strength`, `rf_strength`, and
+`battery_level` lack verified VELUX physical units. Preserve their IDs, exact raw
+numbers, saved names/enablement/display options, and historical dBm/mV samples
+and metadata. Remove physical units, device classes and measurement state classes;
+future long-term statistics stop for these three diagnostics. Do not convert,
+negate, relabel or delete history. A saved battery unit override remains stored but
+no longer converts the unitless reading. This explicitly supersedes uninterrupted
+future statistics for these three fields only. `battery_percent` remains a
+separate validated percent measurement. The actual client field is
+`battery_level`; do not invent a `battery_vp` alias. Normal calibration is not a
+verified fault and silent mode does not establish motor motion; those booleans
+retain their IDs/values with translated names/icons and no problem/running class.
 
 ### M6: user and developer documentation
 

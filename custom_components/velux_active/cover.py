@@ -6,9 +6,9 @@ from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxShutterData, VeluxWindowData
+from .api import VeluxDevice, VeluxShutterData, VeluxWindowData
 from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
-from .entity import VeluxEntity
+from .entity import VeluxEntity, async_discover_entities
 
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
@@ -18,18 +18,15 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: VeluxActiveConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> bool:
     """Set up Velux Active covers from a config entry."""
-    coordinator = entry.runtime_data
-    covers = []
 
-    for home in coordinator.data:
-        devices = coordinator.data[home]["devices"]
-        for device in devices:
-            if isinstance(device, VeluxWindowData):
-                covers.append(VeluxCover(coordinator, device, is_window=True))
-            elif isinstance(device, VeluxShutterData):
-                covers.append(VeluxCover(coordinator, device, is_window=False))
+    def create(device: VeluxDevice) -> list[VeluxCover]:
+        if isinstance(device, VeluxWindowData):
+            return [VeluxCover(entry.runtime_data, device, is_window=True)]
+        if isinstance(device, VeluxShutterData):
+            return [VeluxCover(entry.runtime_data, device, is_window=False)]
+        return []
 
-    async_add_entities(covers)
+    async_discover_entities(entry, async_add_entities, create)
 
     return True
 
