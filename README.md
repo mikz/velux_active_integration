@@ -1,4 +1,4 @@
-# VELUX ACTIVE cloud sensors
+# VELUX ACTIVE cloud integration
 
 The cloud client ships inside `custom_components/velux_active/velux_active_client`.
 The integration ZIP is self-contained and needs no separately published client
@@ -9,9 +9,9 @@ cloud gateway's `is_raining` field. Sign in with the email address and password
 used by the VELUX ACTIVE app.
 
 It exposes gateway rain and status sensors, window and shutter positions, and
-battery diagnostics. Covers report position only. Ordinary cover entities are observational. An optional, explicit
-`velux_active.open_during_rain` action provides temporary signed rain ventilation
-after gateway pairing; see below.
+battery diagnostics. Pairing the gateway enables standard Home Assistant open,
+close, and position controls for its roof windows. Unpaired windows and shutters
+remain observational. Household automation rules belong in Home Assistant.
 
 ## Install or update a released version
 
@@ -70,16 +70,15 @@ that a window is safe to open. Native VELUX rain protection remains on the devic
 
 Before installation, set up a VELUX ACTIVE gateway and account in the VELUX ACTIVE
 app. Home Assistant needs outbound HTTPS access to `app.velux-active.com`.
-There is no local gateway address, port, callback URL, or OAuth registration to
-configure.
+Status monitoring needs no local gateway address, callback URL, or OAuth registration.
+Optional window control requires local gateway pairing as described below.
 
 | Parameter | Meaning |
 | --- | --- |
 | Email address | Required account login used by the VELUX ACTIVE app. Password renewal keeps this exact login. |
 | Password | Required account password, masked in the form. Home Assistant stores it in the config entry; protect your configuration and backups. |
 
-Status polling is fixed at 60 seconds and topology attempts at 300 seconds. There are no configurable polling,
-control, or other options. Gateway, window, shutter, and switch data come from
+Status polling is fixed at 60 seconds and topology attempts at 300 seconds. Polling intervals are not configurable. Gateway pairing is optional. Gateway, window, shutter, and switch data come from
 cloud snapshots. A connectivity sensor remains available with state `off` when
 the cloud successfully reports its device as unreachable. Other measurements
 become unavailable for unreachable or absent devices or failed polls. Missing
@@ -125,7 +124,7 @@ Use Home Assistant's standard state triggers and state conditions with these
 entities, such as triggering when the rain sensor changes to `on` or testing
 whether connectivity is `off`. Select your registered entity ID in the UI.
 
-### Optional temporary rain ventilation
+### Optional cloud window control
 
 Open the integration's **Configure** action, select the account gateway, and enter
 its local IP address or hostname. When its LED flashes, press the physical gateway
@@ -133,19 +132,21 @@ button once and submit the next form. Home Assistant retrieves and stores signin
 keys in the existing config entry options. Keep configuration backups private.
 Pairing needs local TCP port 25050 and does not move a window.
 
-`velux_active.open_during_rain` accepts one existing cloud window `entity_id` and
-an integer `position` from 1 to 50. It requires paired signing keys, a successful
-fresh cloud poll, a reachable window on that gateway, and reported rain. It sends
-one signed command with the rain override. API/product errors fail the action;
-ambiguous transport failures are never retried automatically. Position remains
-observed feedback, never an optimistic command result. Other cover actions stay
-read-only, and shutters are excluded.
+Paired roof windows support the standard `cover.open_cover`, `cover.close_cover`,
+and `cover.set_cover_position` actions (0–100%). Each sends one signed cloud
+command after a successful fresh status poll and checks the window's gateway and
+reachability. API/product errors fail the action; ambiguous transport failures
+are not retried. Positions remain observed feedback, never optimistic results.
+Shutters remain observational.
 
-VELUX documents that supported windows close automatically after 15 minutes.
-Repeated calls can renew this override and admit rain. A sync controller must not
-retry an unmet opening after that closure if the intended behavior is a single
-ventilation period. The rain report can be stale, so a dry reading alone does not
-establish safe opening conditions. See [VELUX's rain-opening documentation](https://www.velux.ie/support/wiki/active-open-raining).
+Signed commands use VELUX's force flag, as its app does, so an explicit opening
+can override native rain protection. Supported windows limit rain openings to
+50% and close automatically after 15 minutes. Repeated commands can renew the
+override and admit rain. See [VELUX's rain-opening documentation](https://www.velux.ie/support/wiki/active-open-raining).
+
+The integration supplies controls and observations. Rain triggers, target caps,
+sync routing, timers, and retry policy belong in your Home Assistant automations.
+The cloud rain report can be stale; a dry reading does not prove a dry roof.
 
 ## Remove
 
@@ -199,14 +200,14 @@ all VELUX hardware or firmware revisions.
 | Cloud model | Supported observations |
 | --- | --- |
 | NXG gateway | Rain, lock/movement/busy/calibration status, Wi-Fi strength and last-seen time when supplied. |
-| NXO with `velux_type=window` | Read-only window position, reachability, silent state and reported firmware/last-seen time. |
+| NXO with `velux_type=window` | Window position, optional paired open/close/position control, reachability, silent state and reported firmware/last-seen time. |
 | NXO with `velux_type=shutter` | Read-only shutter position and the same reported connectivity/status fields. |
 | NXS / NXD | Reported battery and radio/connectivity diagnostics. |
 | Other types | Inventory presence only; no entities are created. |
 
-Available fields depend on the cloud snapshot. Ordinary cover entities have no open, close, stop or set-position actions. The
-separate rain-ventilation action is limited to paired roof windows. It does
-not provide the local HomeKit connection or replace native VELUX protection.
+Available fields depend on the cloud snapshot. Paired roof windows support open,
+close and set-position actions; STOP is not implemented. The integration does not
+provide the local HomeKit connection. Native VELUX firmware enforces device limits.
 
 ## Use cases and automation examples
 

@@ -71,7 +71,7 @@
     "step": {
       "init": {
         "title": "Spárovat cloudové ovládání oken",
-        "description": "Volitelné párování brány umožní dočasné větrání za deště. Zadejte místní IP adresu nebo název brány. Budete potřebovat přístup k jejímu tlačítku.",
+        "description": "Volitelné párování brány umožní cloudové ovládání oken. Zadejte místní IP adresu nebo název brány. Budete potřebovat přístup k jejímu tlačítku.",
         "data": {
           "gateway_id": "Brána",
           "gateway_host": "IP adresa nebo název brány"
@@ -87,20 +87,6 @@
     },
     "abort": {
       "not_loaded": "Před párováním načtěte cloudový účet."
-    }
-  },
-  "services": {
-    "open_during_rain": {
-      "name": "Dočasně otevřít za deště",
-      "description": "Jednorázově obejde ochranu před deštěm, nejvýše do 50 %. VELUX okno za 15 minut zavře. Opakovaná volání mohou tuto dobu prodloužit a vpustit déšť dovnitř.",
-      "fields": {
-        "entity_id": {
-          "name": "Cloudové okno"
-        },
-        "position": {
-          "name": "Poloha"
-        }
-      }
     }
   }
 }

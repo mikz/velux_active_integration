@@ -29,5 +29,5 @@ boundary; Core admission is separate from this custom integration's installation
 The optional gateway-pairing protocol is adapted from Niek/ha-velux-active
 (MIT, copyright Niek van der Maas). Its license notice is retained in
 `velux_active_client/pairing.py`. Pairing uses Home Assistant's cryptography package;
-signed rain commands use the Python standard library. Neither requires PyPI
+signed window commands use the Python standard library. Neither requires PyPI
 publication of the bundled client.

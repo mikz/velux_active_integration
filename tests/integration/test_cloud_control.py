@@ -1,4 +1,4 @@
-"""Rain commands are explicit, gateway-bound, single-attempt operations."""
+"""Paired cloud covers use native HA actions without household policy."""
 
 import base64
 import hashlib
@@ -24,8 +24,8 @@ KEYS = {
 
 async def command(hass, entity_id, position=12):
     await hass.services.async_call(
-        "velux_active",
-        "open_during_rain",
+        "cover",
+        "set_cover_position",
         {"entity_id": entity_id, "position": position},
         blocking=True,
     )
@@ -39,14 +39,16 @@ def window_id(hass, entry):
     )
 
 
-async def test_rain_command_signed_once_and_reports_observation_only(hass, loaded):
+@pytest.mark.parametrize("rain", [True, False, None])
+async def test_cover_command_signed_once_without_rain_policy(hass, loaded, rain):
     entry, simulator, api = loaded
     gateway = next(
         d for h in entry.runtime_data.data.values() for d in h["devices"] if d.type == "NXG"
     )
     keys = {**KEYS, "gateway_id": gateway.id}
     hass.config_entries.async_update_entry(entry, options=keys)
-    simulator.state["rain"] = True
+    simulator.state["rain"] = rain
+    simulator.state["omit_rain"] = rain is None
     entity_id = window_id(hass, entry)
     with patch.object(api, "set_state", new_callable=AsyncMock) as send:
         await command(hass, entity_id)
@@ -66,8 +68,6 @@ async def test_rain_command_signed_once_and_reports_observation_only(hass, loade
     "case",
     [
         "no_keys",
-        "dry",
-        "missing_rain",
         "wrong_gateway",
         "unreachable",
         "outage",
@@ -76,7 +76,7 @@ async def test_rain_command_signed_once_and_reports_observation_only(hass, loade
         "rejected",
     ],
 )
-async def test_rain_command_rejects_unverified_or_invalid_input(hass, loaded, case):
+async def test_cover_command_rejects_unverified_or_invalid_input(hass, loaded, case):
     entry, simulator, api = loaded
     gateway = next(
         d for h in entry.runtime_data.data.values() for d in h["devices"] if d.type == "NXG"
@@ -85,8 +85,6 @@ async def test_rain_command_rejects_unverified_or_invalid_input(hass, loaded, ca
     simulator.state["rain"] = case != "dry"
     if case == "no_keys":
         keys = {}
-    if case == "missing_rain":
-        simulator.state["omit_rain"] = True
     if case == "wrong_gateway":
         keys["gateway_id"] = "another-gateway"
     if case == "bad_key":
@@ -162,14 +160,45 @@ async def test_command_http_checks_product_errors_without_retry(
     assert calls == [{"home": {"id": "home", "modules": []}}]
 
 
-async def test_rain_service_rejects_wrong_entity_and_unloaded_account(hass, loaded):
-    entry, _, _ = loaded
+async def test_native_open_close_and_no_rain_service(hass, loaded):
+    entry, _, api = loaded
+    gateway = next(
+        d for h in entry.runtime_data.data.values() for d in h["devices"] if d.type == "NXG"
+    )
+    hass.config_entries.async_update_entry(entry, options={**KEYS, "gateway_id": gateway.id})
     entity_id = window_id(hass, entry)
-    with pytest.raises(HomeAssistantError, match="Select a VELUX"):
-        await command(hass, "cover.not_a_cloud_window")
-    await hass.config_entries.async_unload(entry.entry_id)
+    assert not hass.services.has_service("velux_active", "open_during_rain")
+    with patch.object(api, "set_state", new_callable=AsyncMock) as send:
+        for service, position in [("open_cover", 100), ("close_cover", 0)]:
+            await hass.services.async_call(
+                "cover", service, {"entity_id": entity_id}, blocking=True
+            )
+            assert send.call_args.args[0]["modules"][0]["target_position"] == position
+    assert send.await_count == 2
+
+
+async def test_unload_during_command_refresh(hass, loaded):
+    entry, _, api = loaded
+    gateway = next(
+        d for h in entry.runtime_data.data.values() for d in h["devices"] if d.type == "NXG"
+    )
+    hass.config_entries.async_update_entry(entry, options={**KEYS, "gateway_id": gateway.id})
+    entity_id = window_id(hass, entry)
+    cover = hass.data["cover"].get_entity(entity_id)
+
+    async def unload():
+        await hass.config_entries.async_unload(entry.entry_id)
+        return True, None
+
+    with (
+        patch.object(entry.runtime_data, "async_manual_refresh", side_effect=unload),
+        patch.object(api, "set_state", new_callable=AsyncMock) as send,
+    ):
+        with pytest.raises(HomeAssistantError, match="Cannot verify"):
+            await cover.async_set_cover_position(position=12)
+    send.assert_not_awaited()
     with pytest.raises(HomeAssistantError, match="not loaded"):
-        await command(hass, entity_id)
+        await cover.async_set_cover_position(position=12)
 
 
 async def test_pairing_rejects_unloaded_account(hass, loaded):
@@ -215,8 +244,8 @@ async def test_pairing_errors_preserve_previous_keys(hass, loaded):
     hass.config_entries.options.async_abort(result["flow_id"])
 
 
-@pytest.mark.parametrize("position", [0, 51, -1, "invalid"])
-async def test_rain_action_rejects_out_of_bounds_before_cloud(hass, loaded, position):
+@pytest.mark.parametrize("position", [101, -1, "invalid"])
+async def test_cover_action_rejects_out_of_bounds_before_cloud(hass, loaded, position):
     entry, _, api = loaded
     with patch.object(api, "set_state", new_callable=AsyncMock) as send:
         with pytest.raises(vol.Invalid):

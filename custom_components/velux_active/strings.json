@@ -44,24 +44,6 @@
       "already_in_progress": "VELUX ACTIVE account setup is already in progress."
     }
   },
-  "services": {
-    "refresh": {
-      "name": "Refresh",
-      "description": "Request fresh cloud status for all configured homes."
-    },
-    "open_during_rain": {
-      "name": "Open temporarily during rain",
-      "description": "Override rain protection once, up to 50%. VELUX closes after 15 minutes. Repeated calls can renew the override and admit rain.",
-      "fields": {
-        "entity_id": {
-          "name": "Cloud window"
-        },
-        "position": {
-          "name": "Position"
-        }
-      }
-    }
-  },
   "entity": {
     "sensor": {
       "wifi_strength": {
@@ -134,7 +116,7 @@
     "step": {
       "init": {
         "title": "Pair cloud window control",
-        "description": "Optional: pair your gateway to enable temporary rain ventilation. Enter its local IP address or hostname. Keep physical access to its button.",
+        "description": "Optional: pair your gateway to enable cloud window controls. Enter its local IP address or hostname. Keep physical access to its button.",
         "data": {
           "gateway_id": "Gateway",
           "gateway_host": "Gateway IP address or hostname"

@@ -1,14 +1,24 @@
 # cover.py
 
 import logging
+from typing import Any
 
 from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverEntityFeature
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import VeluxDevice, VeluxShutterData, VeluxWindowData
+from .api import (
+    APIConnectionError,
+    VeluxDevice,
+    VeluxGatewayData,
+    VeluxShutterData,
+    VeluxWindowData,
+)
 from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
 from .entity import VeluxEntity, async_discover_entities
+from .signing import signed_window
 
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 0
@@ -50,13 +60,71 @@ class VeluxCover(VeluxEntity[VeluxWindowData | VeluxShutterData], CoverEntity):
 
         self._attr_device_class = CoverDeviceClass.WINDOW if is_window else CoverDeviceClass.SHUTTER
 
-        # Remove the 'supported_features' attribute as it's deprecated
-        # Since the cover is read-only, we don't implement any control methods
-
     @property
     def supported_features(self) -> CoverEntityFeature:
-        """Flag supported features."""
+        """Enable ordinary cover controls only for a paired window."""
+        keys = self.coordinator.config_entry.options
+        device = self.device
+        if (
+            isinstance(device, VeluxWindowData)
+            and device.bridge == keys.get("gateway_id")
+            and all(keys.get(key) for key in ("gateway_id", "hash_sign_key", "sign_key_id"))
+        ):
+            return (
+                CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.SET_POSITION
+            )
         return CoverEntityFeature(0)
+
+    async def async_open_cover(self, **kwargs: Any) -> None:
+        """Request the fully open position."""
+        await self.async_set_cover_position(position=100)
+
+    async def async_close_cover(self, **kwargs: Any) -> None:
+        """Request the closed position."""
+        await self.async_set_cover_position(position=0)
+
+    async def async_set_cover_position(self, **kwargs: Any) -> None:
+        """Send one signed position command; automation policy belongs to HA."""
+        entry = self.coordinator.config_entry
+        if entry.state is not ConfigEntryState.LOADED:
+            raise ServiceValidationError("The VELUX cloud account is not loaded")
+        if not self.supported_features:
+            raise ServiceValidationError("Pair this VELUX gateway before controlling its windows")
+        success, _ = await self.coordinator.async_manual_refresh()
+        if (
+            not success
+            or entry.state is not ConfigEntryState.LOADED
+            or entry.runtime_data is not self.coordinator
+        ):
+            raise HomeAssistantError("Cannot verify the current VELUX cloud state")
+        keys = dict(entry.options)
+        window = self.device
+        gateway = next(
+            (
+                d
+                for h in self.coordinator.data.values()
+                for d in h["devices"]
+                if d.id == keys.get("gateway_id")
+            ),
+            None,
+        )
+        if (
+            not isinstance(window, VeluxWindowData)
+            or window.reachable is not True
+            or window.bridge != keys.get("gateway_id")
+            or not isinstance(gateway, VeluxGatewayData)
+            or window.home.id != gateway.home.id
+            or gateway.reachable is False
+        ):
+            raise ServiceValidationError("A reachable window on the paired gateway is required")
+        try:
+            await self.coordinator.api.set_state(
+                {"id": window.home.id, "modules": [signed_window(window, kwargs["position"], keys)]}
+            )
+        except (APIConnectionError, ValueError, KeyError) as err:
+            raise HomeAssistantError("VELUX window command was not confirmed") from err
+        # Commands are never retried or reported as observed positions.
+        await self.coordinator.async_request_refresh()
 
     @property
     def is_closed(self) -> bool | None:

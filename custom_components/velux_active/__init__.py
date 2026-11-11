@@ -11,7 +11,6 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 from .coordinator import VeluxActiveConfigEntry, VeluxCoordinator
-from .rain import async_register_rain_service
 
 PLATFORMS = [Platform.COVER, Platform.SENSOR, Platform.BINARY_SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -45,7 +44,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             ) from error
 
     hass.services.async_register(DOMAIN, "refresh", async_handle_refresh, schema=vol.Schema({}))
-    async_register_rain_service(hass)
     return True
 
 
