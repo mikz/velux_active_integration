@@ -1,9 +1,7 @@
 # VELUX ACTIVE client
 
-This prepared package provides typed, asynchronous, read-only access to the
-VELUX ACTIVE application cloud protocol. Version 0.1.0 is **not yet published**.
-It is being extracted without a protocol rewrite from the integration's tested
-client; publication follows topology implementation and artifact review.
+This package provides typed, asynchronous, read-only access to the
+VELUX ACTIVE application cloud protocol.
 
 The caller supplies an aiohttp `ClientSession` and remains responsible for
 closing it. The client never closes an injected session. Authenticate with the
@@ -27,4 +25,4 @@ raw responses. Supported execution currently targets Python 3.14.2+ and aiohttp
 Source, issue tracking, MIT license and development acceptance records are in
 the public parent repository. See `docs/CLIENT_DEPENDENCY.md` and
 `docs/PLATINUM_ACCEPTANCE.md`. A published distribution and exact integration
-requirement pin are still open acceptance gates.
+requirement pin are checked by the repository's public-client installation gate.

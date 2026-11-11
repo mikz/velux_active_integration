@@ -23,7 +23,7 @@ from scripts.client_release import validate_wheel  # noqa: E402
 from tests.lab.isolation import validate_compose, validate_inspect, validate_routes  # noqa: E402
 from tests.lab.redaction import sanitize_artifacts  # noqa: E402
 
-SUPPORTED = ("2026.9.3", "2026.9.4")
+SUPPORTED = ("2026.9.3", "2026.9.4", "2026.11.1")
 
 
 def command(args, *, env=None, capture=True, timeout=900, check=True):

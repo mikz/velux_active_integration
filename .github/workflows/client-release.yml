@@ -22,8 +22,8 @@ jobs:
         run: uv run python scripts/client_release.py '${{ github.ref_name }}'
       - run: uv run mypy
       - run: uv run pytest -q
-      - name: Build typed distributions with locked tooling
-        run: uv run python -m build --no-isolation packages/velux-active-client --outdir dist/client
+      - name: Verify the exact tested wheel before publishing
+        run: uv run python -c "from scripts.client_release import ROOT, validate_wheel; validate_wheel(next((ROOT / 'dist/client').glob('*.whl')))"
       - name: Publish the reviewed distributions through PyPI trusted publishing
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

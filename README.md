@@ -1,12 +1,10 @@
 # VELUX ACTIVE cloud sensors
 
-The draft Platinum branch uses the separately versioned local project at
-`packages/velux-active-client`. Its prepared 0.1.0 dependency is not published;
-this branch is a development preview and is not a release-installable HACS
-artifact. Development and isolated labs build/install the exact local wheel.
-Publication is deferred by the owner. An integration release requires a
-separately reviewed dependency distribution/installability gate; no production
-deployment or package publication is performed by this work.
+The integration requires `velux-active-client==0.1.0`, maintained in
+`packages/velux-active-client`. That dependency is not yet published, so this PR
+is not ready for ordinary installation. The `public-client` CI check blocks
+readiness until the package installs from PyPI in a clean interpreter and its
+installed bytes match the reviewed client. See the [merge gates](docs/MERGE_READINESS.md).
 
 This Home Assistant integration reads VELUX ACTIVE account data, including the
 cloud gateway's `is_raining` field. Sign in with the email address and password
