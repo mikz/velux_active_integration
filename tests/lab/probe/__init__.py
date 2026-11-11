@@ -226,13 +226,17 @@ async def setup_retry(hass, entry, topology_failure):
     await hass.async_block_till_done()
     assert not old._listeners and old._unsub_refresh is None
     states = []
+    retried = asyncio.Event()
 
     def observe():
         states.append(entry.state.value)
+        if states.count("setup_retry") >= 2:
+            retried.set()
 
     unsubscribe = entry.async_on_state_change(observe)
     try:
-        changes = {"retry_after": "99999"}
+        # Recent Core honors Retry-After during setup too; keep the real wait bounded.
+        changes = {"retry_after": "8"}
         changes["topology_outage" if topology_failure else "outage"] = 429
         await configure(hass, changes)
         before = list((await configure(hass, {}))["requests"])
@@ -248,7 +252,7 @@ async def setup_retry(hass, entry, topology_failure):
             assert first[len(before) :] == expected
         with logical_time(clock + 6):
             # HA's retry timer remains real and invokes the ordinary setup path.
-            await asyncio.sleep(6)
+            await asyncio.wait_for(retried.wait(), timeout=20)
             await hass.async_block_till_done()
             assert entry.state is ConfigEntryState.SETUP_RETRY
             assert_native_retry_observed(states)
@@ -288,7 +292,7 @@ async def setup_retry(hass, entry, topology_failure):
         return {
             "initial_endpoint": "topology" if topology_failure else "authentication",
             "initial_request_trace": expected,
-            "native_retry_after_six_seconds_no_http": True,
+            "native_retry_no_http": True,
             "native_retry_state_transitions": retry_states,
             "observed_setup_attempts": retry_states.count("setup_in_progress"),
             "blocked_corrective_flow_preserves_credentials": True,

@@ -159,8 +159,8 @@ Local brand assets use original, MIT-licensed community artwork. See
 
 ## Supported versions and release procedure
 
-The minimum supported Home Assistant release is **2026.9.3**. Validate **2026.9.3
-and 2026.9.4**; later releases require another compatibility check. Inspect the
+The minimum supported Home Assistant release is **2026.9.3**. Validate **2026.9.3,
+2026.9.4 and 2026.11.1**; later releases require another compatibility check. Inspect the
 installed public HA APIs and current release announcements before changing
 lifecycle behavior. Local brand images require HA 2026.3 or later, already covered
 by this minimum.

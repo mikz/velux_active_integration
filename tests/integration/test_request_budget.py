@@ -3,6 +3,8 @@
 import asyncio
 from collections import Counter
 from datetime import timedelta
+from math import ceil
+from time import monotonic
 from unittest.mock import patch
 
 import pytest
@@ -41,8 +43,13 @@ async def two_homes(hass, cloud):
     entry = MockConfigEntry(domain=DOMAIN, data={"username": USERNAME, "password": PASSWORD})
     entry.add_to_hass(hass)
     with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+        # Integer epochs keep exact +300/+600 boundaries free of rounding drift.
+        with patch(
+            "custom_components.velux_active.coordinator.monotonic",
+            return_value=float(ceil(monotonic())),
+        ):
+            assert await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
         yield entry, simulator, api, homes
 
 

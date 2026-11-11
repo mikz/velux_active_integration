@@ -16,8 +16,8 @@ window, shutter, gateway, or rain-override commands.
 
 ## Install or update a released version
 
-Requires Home Assistant **2026.9.3 or later**. The test lab covers 2026.9.3 and
-2026.9.4.
+Requires Home Assistant **2026.9.3 or later**. The test lab covers 2026.9.3,
+2026.9.4 and 2026.11.1.
 
 1. Add [this repository](https://github.com/mikz/velux_active_integration) to HACS
    as a custom **Integration** repository.
@@ -270,7 +270,7 @@ uv run python scripts/lab.py prepare --ha-version 2026.9.4
 uv run python scripts/lab.py test --ha-version 2026.9.4
 ```
 
-Use `--ha-version 2026.9.3` for the other supported test target. Prepare versions
+Use `--ha-version 2026.9.3` or `--ha-version 2026.11.1` for the other test targets. Prepare versions
 sequentially because the checkout shares synthetic TLS build inputs. Rebuild both
 artifacts and prepare images again after editing installed integration/client bytes.
 The local client wheel is preinstalled non-editably; the exact manifest pin and

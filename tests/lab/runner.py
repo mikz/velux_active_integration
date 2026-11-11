@@ -600,7 +600,7 @@ class Lab:
         for endpoint in ("auth", "topology"):
             async with self.scenario("native-setup-retry-shared-deadline-" + endpoint):
                 proof = await self.probe("retry-" + endpoint)
-                assert proof["native_retry_after_six_seconds_no_http"]
+                assert proof["native_retry_no_http"]
                 assert proof["expiry_accepts_fresh_credentials"]
                 self.retry_proofs.append(proof)
                 await self.restart()

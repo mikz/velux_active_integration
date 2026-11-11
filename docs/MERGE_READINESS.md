@@ -46,3 +46,13 @@ runtime tests or establish new real-cloud freshness evidence.
 The lab and CI matrix includes 2026.9.3, 2026.9.4 and the deployed 2026.11.1.
 The new target must pass the same 25 installed scenarios, isolation checks and
 scoped cleanup; adding it to the matrix alone is not acceptance evidence.
+
+The November validation exposed two old timing assumptions in the harness:
+scenarios must wait for Core `RUNNING`, and setup retry checks must allow Core to
+honor the supplied `Retry-After`. The retry fixture now uses an eight-second
+provider delay and waits for the actual second setup transition while holding
+only the client clock inside that deadline. It still requires zero extra HTTP
+requests, an unchanged shared deadline, and successful credential renewal at
+expiry. Separate source cases retain the long-delay boundary checks. The source
+request-budget fixture also uses an integer initial epoch for exact +300/+600
+checks, matching the installed topology fixture's existing approach.
