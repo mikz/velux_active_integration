@@ -56,3 +56,12 @@ requests, an unchanged shared deadline, and successful credential renewal at
 expiry. Separate source cases retain the long-delay boundary checks. The source
 request-budget fixture also uses an integer initial epoch for exact +300/+600
 checks, matching the installed topology fixture's existing approach.
+
+Local HA 2026.11.1 acceptance passed **25/25** scenarios in run
+`velux-lab-2026-11-1-8494636e`, with verified isolation and no remaining scoped
+containers, networks or volumes. The unchanged integration ZIP is
+`8cdc546b6e85afe1931cb55ff29d68035fec8984f354a68a1dc320a59f86ccc7`;
+the client wheel, including the refreshed package README, is
+`b261d980fe5dc017cb6289c4efd37fe34407e9f7ed9cdedd34cb0de3306b7135`.
+This proves the exact local artifacts on current HA; public installation remains
+pending. CI repeats the installed matrix on each PR head.

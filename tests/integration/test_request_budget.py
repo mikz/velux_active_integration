@@ -3,7 +3,7 @@
 import asyncio
 from collections import Counter
 from datetime import timedelta
-from math import ceil
+from math import floor
 from time import monotonic
 from unittest.mock import patch
 
@@ -46,7 +46,7 @@ async def two_homes(hass, cloud):
         # Integer epochs keep exact +300/+600 boundaries free of rounding drift.
         with patch(
             "custom_components.velux_active.coordinator.monotonic",
-            return_value=float(ceil(monotonic())),
+            return_value=float(floor(monotonic())),
         ):
             assert await hass.config_entries.async_setup(entry.entry_id)
             await hass.async_block_till_done()

@@ -2,6 +2,8 @@
 
 import asyncio
 from datetime import timedelta
+from math import floor
+from time import monotonic
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -24,8 +26,13 @@ async def loaded(hass, cloud):
     )
     entry.add_to_hass(hass)
     with patch("custom_components.velux_active.coordinator.VeluxActiveAPI", return_value=api):
-        assert await hass.config_entries.async_setup(entry.entry_id)
-        await hass.async_block_till_done()
+        # Exact topology deadlines need an integer epoch, no later than real time.
+        with patch(
+            "custom_components.velux_active.coordinator.monotonic",
+            return_value=float(floor(monotonic())),
+        ):
+            assert await hass.config_entries.async_setup(entry.entry_id)
+            await hass.async_block_till_done()
         yield entry, simulator, api
 
 
