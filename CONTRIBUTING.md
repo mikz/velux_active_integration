@@ -15,7 +15,7 @@ Contributions to this repository use the [MIT license](LICENSE).
 
 ## Runtime architecture and identity
 
-`packages/velux-active-client` owns the asynchronous cloud client; the integration's
+`custom_components/velux_active/velux_active_client` owns the asynchronous cloud client; the integration's
 `api.py` forwards its public API for compatibility. The client receives Home
 Assistant's shared `aiohttp.ClientSession` and does not create or close it. The
 client implements bounded HTTP requests, token rotation under an async lock,
@@ -95,31 +95,21 @@ An exclusive preparation lock rejects overlapping image builds.
 
 ## Dependency and asset provenance
 
-The single cloud-client implementation is in
-[`packages/velux-active-client`](packages/velux-active-client), under this
-repository's MIT license. It follows the protocol references in
-[the dependency assessment](docs/CLIENT_DEPENDENCY.md). Its runtime dependency is
-`aiohttp`; integration code also uses Home Assistant and `voluptuous`. The manifest
-pins the independently versioned client exactly. `uv.lock` pins development tools
-and runtime dependencies for reproducible local validation.
+The single cloud-client implementation is bundled in
+[`custom_components/velux_active/velux_active_client`](custom_components/velux_active/velux_active_client),
+under this repository's MIT license. Its runtime dependency, `aiohttp`, is supplied
+by Home Assistant. The integration manifest has no external requirements.
+`uv.lock` pins development tools and dependencies for reproducible validation.
+See [the dependency decision](docs/CLIENT_DEPENDENCY.md).
 
-This branch is a local validation candidate requiring the matching local client
-wheel. Public distribution, publisher configuration, tags, and publication are
-pending by user instruction. HACS does not install the sibling package folder;
-green schema validation does not establish ordinary HACS installability. Do not
-release the integration while its pinned client is unpublished.
-
-Run `uv run python scripts/prepare_client_artifacts.py` before the source artifact
-tests or lab preparation. This explicit network preparation builds the local
-sdist/wheel and downloads hashed dependencies into an allowlisted wheelhouse.
-Artifact tests then install non-editably into a fresh interpreter with no index
-or checkout fallback. Lab images preinstall the same local wheel; the native
-startup gate validates the exact manifest pin, installed origins, and member
-hashes. Receipts bind both the integration ZIP and client wheel. Development's
-workspace editable installation is not artifact acceptance evidence.
+Run `uv run python scripts/prepare_runtime_artifacts.py` before source artifact
+tests. This preparation downloads hashed aiohttp dependencies into a local
+wheelhouse. Artifact tests load the ZIP in a fresh interpreter with only these
+dependencies, without an installed client or checkout fallback. Native HA lab
+images install the same ZIP and verify member hashes and bundled client origins.
 
 For final installed acceptance, generate the synthetic recorder seed before
-preparation and run the two targets sequentially:
+preparation and run the targets sequentially:
 
 ```sh
 uv run pytest scripts/generate_legacy_recorder.py -q
@@ -128,12 +118,14 @@ uv run python scripts/release.py verify
 uv run python scripts/lab.py prepare --ha-version 2026.9.3
 uv run python scripts/lab.py test --ha-version 2026.9.3 --timeout 900
 uv run python scripts/lab.py prepare --ha-version 2026.9.4
-uv run python scripts/lab.py test --ha-version 2026.9.4 --timeout 900 --keep
+uv run python scripts/lab.py test --ha-version 2026.9.4 --timeout 900
+uv run python scripts/lab.py prepare --ha-version 2026.11.1
+uv run python scripts/lab.py test --ha-version 2026.11.1 --timeout 900 --keep
 ```
 
 Freeze all source, prep, compose and runner bytes throughout these runs. Even a
 harness-only compose change can invalidate an active controller's cleanup inputs.
-The lab binds probe/preparation hashes separately from the ZIP/wheel. Logical
+The lab binds probe/preparation hashes separately from the ZIP. Logical
 fixtures patch only the named candidate/client monotonic clocks. Exact-deadline
 scenarios initialize through the shared native integer clock baseline. Assert
 the intended endpoint request and inventory observation occurred before checking
@@ -171,7 +163,7 @@ by this minimum.
 3. Run hassfest and HACS validation without ignoring brands.
 4. Check the payload inventory against the intended tracked integration files.
    The package contract includes visible Python (`.py`), JSON (`.json`), YAML
-   (`.yaml`), and PNG (`.png`) files, including nested modules, translations, and
+   (`.yaml`), PNG (`.png`), and typing marker (`.typed`) files, including nested modules, translations, and
    brand assets. It excludes hidden files/directories, `__pycache__`, bytecode,
    and files with other suffixes, such as editor/runtime debris. Add and review
    new payload types explicitly. A builder and verifier sharing a broad glob can
@@ -179,7 +171,7 @@ by this minimum.
    The source test compares package members with the tracked integration inventory
    independently and proves verification rejects extra archive members.
    Run `scripts/release.py build`, then `verify`. Prepare and test that exact ZIP
-   on both target HA versions. Preserve the archive SHA-256 and sanitized receipts.
+   on all target HA versions. Preserve the archive SHA-256 and sanitized receipts.
 5. If authorized, run the separate read-only real-cloud smoke check. A simulated
    pass does not establish real-cloud access or rain freshness.
 6. Update the manifest/project version together for a release, rebuild and retest

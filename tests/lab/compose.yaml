@@ -9,7 +9,6 @@ services:
       LAB_RUN_ID: ${LAB_RUN_ID:?}
       LAB_HA_ADDRESS: ${LAB_HA_ADDRESS:?}
       LAB_ARTIFACT_SHA256: ${LAB_ARTIFACT_SHA256:?}
-      LAB_CLIENT_WHEEL_SHA256: ${LAB_CLIENT_WHEEL_SHA256:?}
     labels:
       io.velux-active.lab.run: ${LAB_RUN_ID}
       io.velux-active.lab.role: ha
@@ -54,7 +53,6 @@ services:
       LAB_SIM_URL: https://app.velux-active.com
       LAB_SCENARIO: ${LAB_SCENARIO:-all}
       LAB_ARTIFACT_SHA256: ${LAB_ARTIFACT_SHA256:?}
-      LAB_CLIENT_WHEEL_SHA256: ${LAB_CLIENT_WHEEL_SHA256:?}
     labels:
       io.velux-active.lab.run: ${LAB_RUN_ID}
       io.velux-active.lab.role: runner

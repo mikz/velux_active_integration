@@ -16,10 +16,7 @@ def validate(report, root: Path) -> list[str]:
     failures = []
     sources = [
         source
-        for directory in (
-            root / "custom_components/velux_active",
-            root / "packages/velux-active-client/src/velux_active_client",
-        )
+        for directory in (root / "custom_components/velux_active",)
         for source in directory.rglob("*.py")
     ]
     for source in sorted(sources):

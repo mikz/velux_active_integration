@@ -25,11 +25,11 @@ from tests.lab.cloud import PASSWORD, USERNAME
     ],
 )
 async def test_artifact_smoke_runs_isolated_zip_members_and_hides_credentials(
-    tmp_path, cloud, client_artifact_runtime, known, counts, omit_rain
+    tmp_path, cloud, artifact_runtime, known, counts, omit_rain
 ):
     simulator, api = cloud
     simulator.state["omit_rain"] = omit_rain
-    interpreter, wheel = client_artifact_runtime
+    interpreter = artifact_runtime
     credentials = tmp_path / "credentials.json"
     credentials.write_text(json.dumps({"username": USERNAME, "password": PASSWORD}))
     archive = tmp_path / "integration.zip"
@@ -45,8 +45,6 @@ async def test_artifact_smoke_runs_isolated_zip_members_and_hides_credentials(
         str(credentials),
         "--python",
         str(interpreter),
-        "--dependency-wheel",
-        str(wheel),
         "--synthetic-url",
         api._base_url,
         "--compare-registry-stdin",
@@ -85,13 +83,8 @@ async def test_artifact_smoke_runs_isolated_zip_members_and_hides_credentials(
     }
     assert report["rain_before_token_refresh"] == expected_rain
     assert report["rain_after_token_refresh"] == expected_rain
-    dependency = report["dependency_proof"]
-    assert dependency["version"] == "0.1.0"
-    assert VeluxActiveAPI.__module__ in dependency["modules"]
-    assert dependency["wheel_sha256"] == hashlib.sha256(wheel.read_bytes()).hexdigest()
-    with zipfile.ZipFile(wheel) as payload:
-        for origin in dependency["modules"].values():
-            assert origin["sha256"] == hashlib.sha256(payload.read(origin["member"])).hexdigest()
+    assert report["bundled_client"]
+    assert VeluxActiveAPI.__module__ in report["artifact_modules"]
     assert (
         report["zip_sha256"]
         == hashlib.sha256(await asyncio.to_thread(archive.read_bytes)).hexdigest()
@@ -120,29 +113,17 @@ def test_smoke_rejects_unsafe_zip_members(tmp_path, name):
         extract_verified(archive, tmp_path / "extracted")
 
 
-@pytest.mark.parametrize("kind", ["editable", "wrong_wheel_version"])
-async def test_smoke_rejects_source_fallback_or_wrong_wheel_before_cloud_io(
-    tmp_path, cloud, client_artifact_runtime, kind
+async def test_smoke_rejects_missing_bundled_client_before_cloud_io(
+    tmp_path, cloud, artifact_runtime
 ):
     simulator, api = cloud
-    interpreter, wheel = client_artifact_runtime
     credentials = tmp_path / "credentials.json"
     credentials.write_text(json.dumps({"username": USERNAME, "password": PASSWORD}))
     archive = tmp_path / "integration.zip"
     with zipfile.ZipFile(archive, "w") as payload:
         for name, value in release.files().items():
-            payload.writestr(name, value)
-    if kind == "editable":
-        interpreter = sys.executable
-    else:
-        altered = tmp_path / "different-version.whl"
-        with zipfile.ZipFile(wheel) as source, zipfile.ZipFile(altered, "w") as destination:
-            for name in source.namelist():
-                data = source.read(name)
-                if name.endswith(".dist-info/METADATA"):
-                    data = data.replace(b"Version: 0.1.0", b"Version: 0.1.1")
-                destination.writestr(name, data)
-        wheel = altered
+            if name != "velux_active_client/client.py":
+                payload.writestr(name, value)
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "scripts/cloud_smoke.py",
@@ -151,9 +132,7 @@ async def test_smoke_rejects_source_fallback_or_wrong_wheel_before_cloud_io(
         "--credentials",
         str(credentials),
         "--python",
-        str(interpreter),
-        "--dependency-wheel",
-        str(wheel),
+        str(artifact_runtime),
         "--synthetic-url",
         api._base_url,
         stdout=asyncio.subprocess.PIPE,
@@ -163,6 +142,6 @@ async def test_smoke_rejects_source_fallback_or_wrong_wheel_before_cloud_io(
     assert PASSWORD.encode() not in stdout + stderr
     assert USERNAME.encode() not in stdout + stderr
     assert process.returncode == 1
-    assert json.loads(stdout) == {"status": "failed", "error_type": "ValueError"}
+    assert json.loads(stdout) == {"status": "failed", "error_type": "ModuleNotFoundError"}
     assert simulator.counts["password"] == 0
     assert simulator.counts["homesdata"] == simulator.counts["homestatus"] == 0

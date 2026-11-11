@@ -14,11 +14,11 @@ def receipt_root(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     sources = {
         "custom_components/velux_active/manifest.json": json.dumps(
-            {"version": "0.2.0", "requirements": ["velux-active-client==0.1.0"]}
+            {"version": "0.2.0", "requirements": []}
         ),
         "custom_components/velux_active/config_flow.py": "VALUE = 1\n",
-        "packages/velux-active-client/src/velux_active_client/__init__.py": "VALUE = 2\n",
-        "packages/velux-active-client/src/velux_active_client/py.typed": "",
+        "custom_components/velux_active/velux_active_client/__init__.py": "VALUE = 2\n",
+        "custom_components/velux_active/velux_active_client/py.typed": "",
     }
     for name, content in sources.items():
         target = tmp_path / name
@@ -39,16 +39,11 @@ def receipt_root(tmp_path):
         cwd=tmp_path,
         check=True,
     )
-    (tmp_path / "dist/client").mkdir(parents=True)
+    (tmp_path / "dist").mkdir()
     with zipfile.ZipFile(tmp_path / "dist/velux_active.zip", "w") as archive:
         for name, content in sources.items():
             if name.startswith("custom_components/"):
                 archive.writestr(name.removeprefix("custom_components/velux_active/"), content)
-    with zipfile.ZipFile(tmp_path / "dist/client/client.whl", "w") as archive:
-        for name, content in sources.items():
-            if name.startswith("packages/"):
-                archive.writestr(name.removeprefix("packages/velux-active-client/src/"), content)
-        archive.writestr("client.dist-info/METADATA", "Name: velux-active-client\nVersion: 0.1.0\n")
     summary = {"num_statements": 1, "num_branches": 0, "covered_lines": 1, "covered_branches": 0}
     report = {
         "meta": {"branch_coverage": True},
@@ -63,7 +58,7 @@ def test_source_receipt_binds_verified_payload_and_explicit_success(receipt_root
     receipt = collect(receipt_root, dict.fromkeys(GATES, "success"))
     assert receipt["status"] == "passed"
     assert receipt["source_revision"]
-    assert receipt["artifacts"]["manifest_pin"] == "velux-active-client==0.1.0"
+    assert receipt["artifacts"]["bundled_client"] is True
     assert receipt["coverage"]["branch_coverage"] is True
     assert set(receipt["gates"]) == set(GATES)
     assert all(record["outcome"] == "success" for record in receipt["gates"].values())
@@ -78,8 +73,9 @@ def test_source_receipt_rejects_modified_or_missing_payload(receipt_root, mutati
         data["requirements"] = ["velux-active-client==9.9.9"]
         manifest.write_text(json.dumps(data))
         with zipfile.ZipFile(archive, "w") as package:
-            package.writestr("manifest.json", manifest.read_text())
-            package.writestr("config_flow.py", "VALUE = 1\n")
+            for path in (receipt_root / "custom_components/velux_active").rglob("*"):
+                if path.is_file():
+                    package.write(path, path.relative_to(manifest.parent))
     else:
         with zipfile.ZipFile(archive, "w") as package:
             package.writestr(

@@ -271,9 +271,7 @@ class Lab:
 
         async with self.scenario("native-installed-member-and-client-origin-proof"):
             self.native_proof = await self.probe("proof")
-            assert (
-                self.native_proof["client"]["wheel_sha256"] == os.environ["LAB_CLIENT_WHEEL_SHA256"]
-            )
+            assert self.native_proof["bundled_client"]
 
         async with self.scenario("pre-candidate-recorder-history-and-unit-preferences"):
             core_state = (await self.request("GET", "/api/core/state"))["state"]
@@ -678,11 +676,7 @@ class Lab:
                     "source_revision": os.environ["LAB_SOURCE_REVISION"],
                     "scenarios": self.results,
                     "artifact_sha256": os.environ["LAB_ARTIFACT_SHA256"],
-                    "client_wheel_sha256": os.environ["LAB_CLIENT_WHEEL_SHA256"],
-                    "client_proof": json.loads(
-                        await asyncio.to_thread((CONTROL / "client-proof.json").read_text)
-                    ),
-                    "scope": "local validation candidate; requires the matching local wheel",
+                    "scope": "self-contained integration ZIP",
                     "native_proof": self.native_proof,
                     "statistics_proof": self.statistics_proof,
                     "discovery_routes": self.discovery_routes,

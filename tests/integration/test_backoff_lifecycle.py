@@ -48,14 +48,18 @@ async def test_native_setup_retry_preserves_cloud_deadline_and_fresh_credentials
     entry = MockConfigEntry(domain=DOMAIN, data={"username": USERNAME, "password": PASSWORD})
     entry.add_to_hass(hass)
     now = dt_util.utcnow()
-    with patch("velux_active_client.client.monotonic", return_value=1000):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+    ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.state is ConfigEntryState.SETUP_RETRY
         initial_calls = list(simulator.requests)
         deadline = async_rate_limit_state(hass).deadline
     # Advance native retry and client elapsed time together inside the deadline.
-    with patch("velux_active_client.client.monotonic", return_value=1006):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1006
+    ):
         async_fire_time_changed(hass, now + timedelta(seconds=6))
         await hass.async_block_till_done(wait_background_tasks=True)
         assert entry.state is ConfigEntryState.SETUP_RETRY
@@ -69,7 +73,9 @@ async def test_native_setup_retry_preserves_cloud_deadline_and_fresh_credentials
     hass.config_entries.async_update_entry(
         entry, data={"username": USERNAME, "password": "replacement-password"}
     )
-    with patch("velux_active_client.client.monotonic", return_value=100999):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=100999
+    ):
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
         assert entry.state is ConfigEntryState.LOADED
@@ -84,7 +90,9 @@ async def test_native_setup_retry_preserves_cloud_deadline_and_fresh_credentials
 async def test_flow_before_setup_and_entry_removal_share_only_deadline(hass, native_clients):
     simulator, clients = native_clients
     simulator.state["outage"] = 429
-    with patch("velux_active_client.client.monotonic", return_value=1000):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "user"}, data={"username": USERNAME, "password": PASSWORD}
         )
@@ -97,7 +105,9 @@ async def test_flow_before_setup_and_entry_removal_share_only_deadline(hass, nat
         domain=DOMAIN, data={"username": "another@example.invalid", "password": "another-password"}
     )
     entry.add_to_hass(hass)
-    with patch("velux_active_client.client.monotonic", return_value=1001):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1001
+    ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         assert async_rate_limit_state(hass) is state
@@ -124,7 +134,9 @@ async def test_loaded_reload_and_blocked_reconfigure_preserve_credentials(hass, 
     simulator, clients = native_clients
     entry = MockConfigEntry(domain=DOMAIN, data={"username": USERNAME, "password": PASSWORD})
     entry.add_to_hass(hass)
-    with patch("velux_active_client.client.monotonic", return_value=1000):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+    ):
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         simulator.state.update(outage=429, retry_after="99999")
@@ -132,7 +144,9 @@ async def test_loaded_reload_and_blocked_reconfigure_preserve_credentials(hass, 
             await refresh(hass)
         initial_calls = list(simulator.requests)
         state = async_rate_limit_state(hass)
-    with patch("velux_active_client.client.monotonic", return_value=4601):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=4601
+    ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "reconfigure", "entry_id": entry.entry_id}
         )

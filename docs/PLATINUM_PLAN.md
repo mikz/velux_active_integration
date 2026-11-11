@@ -1,3 +1,7 @@
+> Historical standalone-client plan/evidence. The owner superseded the separate
+> package requirement on 2026-11-11; see [the bundled-client decision](CLIENT_DEPENDENCY.md)
+> and [current merge gates](MERGE_READINESS.md). Old wheel results do not validate the new ZIP.
+
 # Reviewed Platinum engineering plan P2
 
 This document records the reviewer-approved plan (planning review R3: PASS), its

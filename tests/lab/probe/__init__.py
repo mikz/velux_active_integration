@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import importlib.util
 import json
 import os
 import sys
@@ -690,21 +689,16 @@ def installed_proof():
             assert origin.is_relative_to(root)
             origins[name] = origin.relative_to(root).as_posix()
     assert "custom_components.velux_active.coordinator" in origins
-    spec = importlib.util.spec_from_file_location("artifact_proof_helper", "/lab/cloud_smoke.py")
-    helper = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(helper)
-    manifest = json.loads((root / "manifest.json").read_text())
-    (wheel,) = Path("/opt/velux-active").glob("*.whl")
-    client = helper.verify_dependency(wheel, manifest["requirements"])
-    assert client["wheel_sha256"] == os.environ["LAB_CLIENT_WHEEL_SHA256"]
+    assert "custom_components.velux_active.velux_active_client.client" in origins
+    assert not json.loads((root / "manifest.json").read_text())["requirements"]
     assert hashlib.sha256(archive.read_bytes()).hexdigest() == os.environ["LAB_ARTIFACT_SHA256"]
     return {
         "member_hashes": members,
         "native_origins": origins,
-        "client": client,
+        "bundled_client": True,
         "clock_patch_targets": [
             "custom_components.velux_active.coordinator.monotonic",
-            "velux_active_client.client.monotonic",
+            "custom_components.velux_active.velux_active_client.client.monotonic",
         ],
         "clock_scope": "logical decision/boundary proof; HA scheduler remains real",
     }
@@ -724,7 +718,10 @@ def logical_time(value):
     """Patch only the named candidate/client clocks; restore even on failure."""
     with (
         patch("custom_components.velux_active.coordinator.monotonic", return_value=value),
-        patch("velux_active_client.client.monotonic", return_value=value),
+        patch(
+            "custom_components.velux_active.velux_active_client.client.monotonic",
+            return_value=value,
+        ),
     ):
         yield
 

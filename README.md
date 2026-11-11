@@ -1,10 +1,8 @@
 # VELUX ACTIVE cloud sensors
 
-The integration requires `velux-active-client==0.1.0`, maintained in
-`packages/velux-active-client`. That dependency is not yet published, so this PR
-is not ready for ordinary installation. The `public-client` CI check blocks
-readiness until the package installs from PyPI in a clean interpreter and its
-installed bytes match the reviewed client. See the [merge gates](docs/MERGE_READINESS.md).
+The cloud client ships inside `custom_components/velux_active/velux_active_client`.
+The integration ZIP is self-contained and needs no separately published client
+package. See the [merge gates](docs/MERGE_READINESS.md).
 
 This Home Assistant integration reads VELUX ACTIVE account data, including the
 cloud gateway's `is_raining` field. Sign in with the email address and password
@@ -167,7 +165,7 @@ This remains a **Custom** community integration. The local
 54 Bronze, Silver, Gold and Platinum engineering rules with named evidence and
 open acceptance gates. It does not assign official Home Assistant certification.
 The [acceptance matrix](docs/PLATINUM_ACCEPTANCE.md) separates locally tested work
-from final artifact checks, user-deferred public distribution and Core acceptance.
+from final artifact checks and separate Core acceptance.
 
 
 ## Supported devices and functions
@@ -241,9 +239,9 @@ series. From this repository, install the locked test environment and run checks
 
 ```sh
 uv sync --locked
-uv run python scripts/prepare_client_artifacts.py
+uv run python scripts/prepare_runtime_artifacts.py
 uv run mypy --cache-dir=/dev/null
-uv run pytest --cov=custom_components.velux_active --cov=velux_active_client --cov-branch --cov-report=json:artifacts/source-coverage.json
+uv run pytest --cov=custom_components.velux_active --cov-branch --cov-report=json:artifacts/source-coverage.json
 uv run python scripts/check_coverage.py artifacts/source-coverage.json
 uv run ruff check .
 uv run ruff format --check .
@@ -264,18 +262,16 @@ Build the release archive and prepare the images before starting the isolated
 runtime:
 
 ```sh
-uv run python scripts/prepare_client_artifacts.py
+uv run python scripts/prepare_runtime_artifacts.py
 uv run python scripts/release.py build
 uv run python scripts/lab.py prepare --ha-version 2026.9.4
 uv run python scripts/lab.py test --ha-version 2026.9.4
 ```
 
 Use `--ha-version 2026.9.3` or `--ha-version 2026.11.1` for the other test targets. Prepare versions
-sequentially because the checkout shares synthetic TLS build inputs. Rebuild both
-artifacts and prepare images again after editing installed integration/client bytes.
-The local client wheel is preinstalled non-editably; the exact manifest pin and
-installed member hashes are verified before native Home Assistant starts. The controller
-rejects a stale archive or prepared image.
+sequentially because the checkout shares synthetic TLS build inputs. Rebuild the ZIP and prepare images again after editing installed integration/client bytes.
+The lab installs only that ZIP and verifies installed member hashes and bundled
+client import origins. The controller rejects a stale archive or prepared image.
 
 The simulator implements login, rotating tokens, home topology, and status over
 HTTPS. Private Docker DNS resolves `app.velux-active.com` to the simulator, whose
@@ -290,7 +286,7 @@ WebSocket APIs. It checks rain changes, missing data, gateway disconnection,
 cloud outages, throttling, token recovery, reload, restart, and reauthentication.
 
 Each run writes sanitized results under `artifacts/lab/<run-id>/`. Results include
-the HA/Python/dependency versions, ZIP and wheel digests, installed client member
+the HA/Python/dependency versions, ZIP digest, installed integration/client member
 hashes, isolation receipts, scenario outcomes and logs.
 A passing lab proves behavior against the simulated protocol. It does not prove
 that a particular real account can authenticate or that cloud rain data is fresh.

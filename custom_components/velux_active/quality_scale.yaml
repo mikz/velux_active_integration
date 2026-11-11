@@ -23,8 +23,7 @@ rules:
     comment: Native UI user/password renewal flows in config_flow.py; test_native_user_flow_distinguishes_authentication_from_outage.
   dependency-transparency:
     status: done
-    comment: Public MIT packages/velux-active-client owns the protocol; exact manifest pin and local wheel provenance in
-      CONTRIBUTING. Public distribution and ordinary HACS installation are user-deferred, not exemptions.
+    comment: The MIT client is bundled in the integration ZIP; aiohttp is supplied by Home Assistant. See docs/CLIENT_DEPENDENCY.md and CONTRIBUTING.md for provenance and artifact validation.
   docs-actions:
     status: done
     comment: README Actions, triggers, and conditions and Rain data and refresh describe zero-argument refresh, completed
@@ -173,7 +172,7 @@ rules:
     comment: test_manual_removal_requires_fresh_complete_uncontradicted_inventory plus native composite/child/removal/reappearance tests verify conservative permission; HA owns deletion. See docs/TOPOLOGY_CONTRACT.md.
   async-dependency:
     status: done
-    comment: packages/velux-active-client is the sole typed async aiohttp protocol implementation; HTTP regressions and test_request_budget.py enforce bounded retries/rotation/global backoff. Public distribution is user-deferred.
+    comment: The bundled velux_active_client is the sole typed async aiohttp protocol implementation; HTTP regressions and test_request_budget.py enforce bounded retries/rotation/global backoff.
   inject-websession:
     status: done
     comment: Client accepts an injected aiohttp session without closing it; HA supplies async_get_clientsession. Native unload and artifact smoke tests cover lifecycle; no runtime session factory or custom installer.

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "custom_components/velux_active"
 ARCHIVE = ROOT / "dist/velux_active.zip"
-PAYLOAD_SUFFIXES = {".py", ".json", ".yaml", ".png"}
+PAYLOAD_SUFFIXES = {".py", ".json", ".yaml", ".png", ".typed"}
 
 
 def files():

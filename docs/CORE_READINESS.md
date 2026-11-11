@@ -1,9 +1,7 @@
 # Core placement and admission proposal
 
-This branch remains a Custom integration and a local validation candidate that
-requires its matching client wheel. The owner deferred public distribution,
-publisher configuration, tags and publication. No Core PR, upstream messages,
-release or official quality-tier request has been made.
+This remains a Custom integration with its cloud client bundled in the HACS ZIP.
+Core admission is a separate future project, not a custom-installation gate.
 
 ## Proposed protocol boundary
 
@@ -32,8 +30,8 @@ hint establishes neither account ownership nor transport trust.
 
 | Gate | Prepared evidence / remaining work |
 | --- | --- |
-| Client ownership and license | Standalone same-repo project, MIT license, typed public API, tests, sdist/wheel and scoped release workflow prepared. |
-| Public dependency | User-deferred. Exact public immutable version and clean ordinary HA/HACS resolution must be verified before an installable integration release or Core submission. |
+| Client ownership and license | Bundled same-repo client, MIT license, typed API and tests. |
+| Public dependency | Not required for this custom integration. Agree an upstream-compatible library boundary before a future Core submission. |
 | Protocol support | Strict HTTP regressions, both final installed targets and isolated frozen-wheel real-cloud proof passed owner validation. Registry corroboration is partial (9 known / 7 observed / 7 overlap / 2 missing / 0 extra); no provider completeness or compatibility guarantee is claimed. Formal review PASS at ba8def5 and owner acceptance close the locally achievable engineering scope; public distribution and Core admission remain separate deferred/external gates. |
 | Domain and placement | Proposal above; upstream approval pending. Do not change custom-domain storage/unique IDs without a separately accepted migration. |
 | Core manifest | Port under `homeassistant/components` only after placement acceptance; remove custom-only version/layout conventions and use approved documentation/requirements/ownership. |
@@ -43,8 +41,3 @@ hint establishes neither account ownership nor transport trust.
 | Website documentation | Prepare an upstream `home-assistant.io` integration page with setup, credential renewal, supported read-only models/functions, availability/update cadence, examples and limitations. Current README is source material, not an accepted website page. |
 | Quality recognition | Local formal review passed; exact evidence is available for a future authorized submission. Official tier and Core inclusion require upstream acceptance, never a custom manifest claim. |
 
-The future public workflow uses `client-v<version>` tags, not GitHub Release
-objects, so client tags cannot promote an integration HACS artifact. Its intended
-publishing environment and trusted-publisher configuration remain unconfigured
-by user instruction. Changed published bytes must always receive a new version;
-local unpublished candidate rebuilds do not imply a published release exists.

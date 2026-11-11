@@ -1,6 +1,6 @@
-"""Compatibility imports for the separately versioned local read-only client."""
+"""Compatibility imports for the bundled read-only client."""
 
-from velux_active_client import (
+from .velux_active_client import (
     APIConnectionError,
     AuthToken,
     InvalidAuthError,

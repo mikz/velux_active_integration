@@ -4,7 +4,8 @@ import logging
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util.hass_dict import HassKey
-from velux_active_client import RateLimitState
+
+from .velux_active_client import RateLimitState
 
 LOGGER = logging.getLogger(__package__)
 

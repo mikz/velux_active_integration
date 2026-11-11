@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare local typed distributions and an explicit locked runtime wheelhouse.
+"""Prepare an explicit locked aiohttp wheelhouse for isolated ZIP tests.
 
 Network access is confined to this preparation phase. Artifact execution uses
 only the resulting local files; it never relies on an incidental uv index cache.
@@ -17,18 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def prepare(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "build",
-            "--no-isolation",
-            str(ROOT / "packages/velux-active-client"),
-            "--outdir",
-            str(ROOT / "dist/client"),
-        ],
-        check=True,
-    )
     requirements = output / "requirements.txt"
     subprocess.run(
         [
@@ -68,12 +56,7 @@ def prepare(output: Path) -> None:
         "runtime_wheels": {
             p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(output.glob("*.whl"))
         },
-        "local_client_distributions": {
-            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted((ROOT / "dist/client").glob("*"))
-            if p.name.endswith((".whl", ".tar.gz"))
-        },
-        "scope": "local validation candidate; requires the matching local wheel",
+        "scope": "third-party runtime dependencies for isolated ZIP tests",
     }
     (output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt, sort_keys=True))
@@ -81,5 +64,5 @@ def prepare(output: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / ".lab/client-wheelhouse")
+    parser.add_argument("--output", type=Path, default=ROOT / ".lab/runtime-wheelhouse")
     prepare(parser.parse_args().output)

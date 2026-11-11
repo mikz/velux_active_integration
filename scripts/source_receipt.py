@@ -8,19 +8,17 @@ import json
 import subprocess
 import sys
 import zipfile
-from email.parser import Parser
 from pathlib import Path
 
 from scripts.check_coverage import validate as validate_coverage
-from scripts.client_release import validate_wheel
 
 GATES = {
     "sync": "uv sync --locked",
-    "prepare": "uv run python scripts/prepare_client_artifacts.py",
+    "prepare": "uv run python scripts/prepare_runtime_artifacts.py",
     "ruff": "uv run ruff check .",
     "format": "uv run ruff format --check .",
     "pytest": (
-        "uv run pytest --cov=custom_components.velux_active --cov=velux_active_client "
+        "uv run pytest --cov=custom_components.velux_active "
         "--cov-branch --cov-report=term-missing "
         "--cov-report=json:artifacts/source-coverage.json"
     ),
@@ -32,7 +30,7 @@ GATES = {
 
 
 def artifact_proof(root):
-    """Compare both archives against independent tracked inventories and exact pin."""
+    """Compare the self-contained archive against the independent tracked inventory."""
     prefix = "custom_components/velux_active/"
     tracked = subprocess.check_output(["git", "ls-files", "-z", "--", prefix], cwd=root)
     expected = {
@@ -47,19 +45,8 @@ def artifact_proof(root):
         ):
             raise ValueError("Integration archive inventory or bytes mismatch")
     manifest = json.loads(expected["manifest.json"])
-    wheels = list((root / "dist/client").glob("*.whl"))
-    if len(wheels) != 1:
-        raise ValueError("Expected one client wheel")
-    wheel = wheels[0]
-    members = validate_wheel(wheel, root)
-    with zipfile.ZipFile(wheel) as package:
-        metadata = [name for name in package.namelist() if name.endswith(".dist-info/METADATA")]
-        if len(metadata) != 1:
-            raise ValueError("Expected one wheel metadata member")
-        info = Parser().parsestr(package.read(metadata[0]).decode())
-    name, version = info["Name"], info["Version"]
-    if name != "velux-active-client" or manifest["requirements"] != [f"{name}=={version}"]:
-        raise ValueError("Manifest pin does not match wheel")
+    if manifest["requirements"]:
+        raise ValueError("The integration must include its client")
     return {
         "integration": {
             "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
@@ -68,13 +55,7 @@ def artifact_proof(root):
                 name: hashlib.sha256(data).hexdigest() for name, data in expected.items()
             },
         },
-        "client": {
-            "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
-            "name": name,
-            "version": version,
-            "member_hashes": members,
-        },
-        "manifest_pin": manifest["requirements"][0],
+        "bundled_client": True,
     }
 
 
@@ -101,7 +82,6 @@ def collect(root, outcomes):
         "coverage",
         "mypy",
         "ruff",
-        "build",
         "aiohttp",
     ):
         try:
@@ -119,12 +99,7 @@ def collect(root, outcomes):
                 "modules": {
                     name: value["summary"]
                     for name, value in report["files"].items()
-                    if name.startswith(
-                        (
-                            "custom_components/velux_active/",
-                            "packages/velux-active-client/src/velux_active_client/",
-                        )
-                    )
+                    if name.startswith(("custom_components/velux_active/",))
                 },
             }
         except KeyError, ValueError, TypeError:

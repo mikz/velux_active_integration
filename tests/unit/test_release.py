@@ -17,6 +17,7 @@ def package(tmp_path, monkeypatch):
         "manifest.json": b'{"version":"synthetic"}',
         "__init__.py": b'"""Synthetic integration."""\n',
         "nested/module.py": b"VALUE = 0\n",
+        "nested/py.typed": b"",
         "translations/en.json": b"{}\n",
         "quality_scale.yaml": b"rules: {}\n",
         "brand/icon.png": b"synthetic-png-bytes",

@@ -1,3 +1,7 @@
+> Historical standalone-client plan/evidence. The owner superseded the separate
+> package requirement on 2026-11-11; see [the bundled-client decision](CLIENT_DEPENDENCY.md)
+> and [current merge gates](MERGE_READINESS.md). Old wheel results do not validate the new ZIP.
+
 # P2 rule acceptance matrix
 
 The rule table and accepted runtime evidence below retain their reviewed

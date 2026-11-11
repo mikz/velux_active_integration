@@ -1,67 +1,23 @@
-# Merge and installation gates
+# Merge gates
 
-PR #22 restores the read-only VELUX cloud integration. The earlier accepted
-runtime and real-cloud receipts are recorded in [the acceptance matrix](PLATINUM_ACCEPTANCE.md).
-This page tracks the remaining installation gates as of 11 November 2026;
-historical instructions and receipts in that matrix retain their original scope.
+The client is bundled inside the integration ZIP. The former PyPI publication
+gate was removed following the owner's 2026-11-11 decision; installation no longer
+requires a separately distributed client.
 
-## Public client dependency
+Required validation:
 
-PyPI currently returns 404 for `velux-active-client`. Ordinary Home Assistant
-installation cannot satisfy the manifest's exact `velux-active-client==0.1.0`
-requirement. Installing a local wheel in the lab does not close this gate.
+- Locked source tests, strict mypy, Ruff check/format, and per-module branch/line
+  coverage (at least 95%; config flow 100%).
+- Deterministic ZIP inventory and hashes, including the bundled client and typing
+  marker, checked against tracked integration files.
+- Clean-interpreter artifact smoke tests with only aiohttp dependencies installed;
+  missing client code must fail before cloud I/O.
+- Native installed-ZIP acceptance on HA 2026.9.3, 2026.9.4 and 2026.11.1, with
+  isolated simulator networking, origin verification and cleanup receipts.
+- Hassfest and HACS validation.
 
-`python -m scripts.check_public_client` creates a fresh interpreter, downloads the
-pinned wheel from PyPI without a cache or local source override, compares its
-runtime members with tracked source, installs the manifest requirement with its
-dependencies, and verifies the isolated installed version, origins and member
-hashes. It writes `artifacts/public-client.json`. Both PR CI and the integration
-release workflow require this check. A missing or changed package fails it.
-
-The client publisher workflow publishes the same wheel and sdist used by the
-tests; it no longer rebuilds them after validation. Before creating the client
-tag, review the complete distribution metadata and file inventory.
-
-The remaining publisher setup is:
-
-| Field | Value |
-| --- | --- |
-| PyPI project | `velux-active-client` |
-| GitHub owner | `mikz` |
-| Repository | `velux_active_integration` |
-| Workflow | `client-release.yml` |
-| Environment | `pypi` |
-| First client tag | `client-v0.1.0` |
-
-The publisher has not been configured and publication is awaiting owner approval.
-Do not create a client GitHub Release: client source tags are
-separate from the integration releases consumed by HACS/Marketplace.
-
-After publication, run the public-client gate and require all PR checks to pass
-before marking the PR ready. Publication does not replace the existing isolated
-runtime tests or establish new real-cloud freshness evidence.
-
-## Home Assistant compatibility
-
-The lab and CI matrix includes 2026.9.3, 2026.9.4 and the deployed 2026.11.1.
-The new target must pass the same 25 installed scenarios, isolation checks and
-scoped cleanup; adding it to the matrix alone is not acceptance evidence.
-
-The November validation exposed two old timing assumptions in the harness:
-scenarios must wait for Core `RUNNING`, and setup retry checks must allow Core to
-honor the supplied `Retry-After`. The retry fixture now uses an eight-second
-provider delay and waits for the actual second setup transition while holding
-only the client clock inside that deadline. It still requires zero extra HTTP
-requests, an unchanged shared deadline, and successful credential renewal at
-expiry. Separate source cases retain the long-delay boundary checks. The source
-request-budget fixture also uses an integer initial epoch for exact +300/+600
-checks, matching the installed topology fixture's existing approach.
-
-Local HA 2026.11.1 acceptance passed **25/25** scenarios in run
-`velux-lab-2026-11-1-8494636e`, with verified isolation and no remaining scoped
-containers, networks or volumes. The unchanged integration ZIP is
-`8cdc546b6e85afe1931cb55ff29d68035fec8984f354a68a1dc320a59f86ccc7`;
-the client wheel, including the refreshed package README, is
-`b261d980fe5dc017cb6289c4efd37fe34407e9f7ed9cdedd34cb0de3306b7135`.
-This proves the exact local artifacts on current HA; public installation remains
-pending. CI repeats the installed matrix on each PR head.
+Use the current PR checks for results tied to its latest commit. Older standalone
+wheel receipts remain historical evidence, not validation of the bundled ZIP.
+A simulated rain transition validates software behavior, not physical rain-sensor
+freshness. Live deployment checks must separately verify the existing entry and
+registry identities are preserved.

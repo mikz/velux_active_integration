@@ -83,7 +83,9 @@ async def test_retry_after_is_bounded_and_blocks_repeat_requests(
 ):
     # Exact parser durations need a representable clock; live fractional clocks
     # may conservatively round the authoritative deadline up by one ULP.
-    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
+    monkeypatch.setattr(
+        "custom_components.velux_active.velux_active_client.client.monotonic", lambda: 1000.0
+    )
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": delay})
     with pytest.raises(RateLimitError) as error:
@@ -322,13 +324,18 @@ async def test_long_numeric_retry_after_blocks_every_endpoint_until_full_deadlin
 
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": "99999"})
-    with patch("velux_active_client.client.monotonic", return_value=1000):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+    ):
         with pytest.raises(RateLimitError) as error:
             await api.authenticate(USERNAME, PASSWORD)
         assert error.value.retry_after == 99999
     api.auth_token = AuthToken("synthetic", "synthetic-refresh", 10800)
     for elapsed in (3601, 99998):
-        with patch("velux_active_client.client.monotonic", return_value=1000 + elapsed):
+        with patch(
+            "custom_components.velux_active.velux_active_client.client.monotonic",
+            return_value=1000 + elapsed,
+        ):
             for operation in (
                 api.authenticate(USERNAME, PASSWORD),
                 api.get_home_data(),
@@ -340,7 +347,9 @@ async def test_long_numeric_retry_after_blocks_every_endpoint_until_full_deadlin
                 assert 0 < error.value.retry_after <= 99999
     assert len(calls) == 1
     state.update(status=200, payload={})
-    with patch("velux_active_client.client.monotonic", return_value=100999):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=100999
+    ):
         assert await api._request("/test") == {}
     assert len(calls) == 2
 
@@ -356,20 +365,27 @@ async def test_http_date_retry_after_uses_once_derived_monotonic_deadline(respon
         status=429, headers={"Retry-After": format_datetime(now + timedelta(hours=2), usegmt=True)}
     )
     with (
-        patch("velux_active_client.client.datetime") as wall,
-        patch("velux_active_client.client.monotonic", return_value=1000),
+        patch("custom_components.velux_active.velux_active_client.client.datetime") as wall,
+        patch(
+            "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+        ),
     ):
         wall.now.return_value = now
         with pytest.raises(RateLimitError) as error:
             await api._request("/test")
         assert error.value.retry_after == 7200
     for elapsed in (61, 7199):
-        with patch("velux_active_client.client.monotonic", return_value=1000 + elapsed):
+        with patch(
+            "custom_components.velux_active.velux_active_client.client.monotonic",
+            return_value=1000 + elapsed,
+        ):
             with pytest.raises(RateLimitError):
                 await api._request("/test")
     assert len(calls) == 1
     state.update(status=200)
-    with patch("velux_active_client.client.monotonic", return_value=8200):
+    with patch(
+        "custom_components.velux_active.velux_active_client.client.monotonic", return_value=8200
+    ):
         assert await api._request("/test") == {}
     assert len(calls) == 2
 
@@ -380,7 +396,9 @@ async def test_http_date_retry_after_uses_once_derived_monotonic_deadline(respon
 async def test_past_dates_and_bounded_parser_fallback_still_establish_deadline(
     response_api, header, monkeypatch
 ):
-    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
+    monkeypatch.setattr(
+        "custom_components.velux_active.velux_active_client.client.monotonic", lambda: 1000.0
+    )
     state, calls, api = response_api
     state.update(status=429, headers={"Retry-After": header})
     with pytest.raises(RateLimitError) as error:
@@ -396,7 +414,7 @@ async def test_inflight_shorter_throttle_does_not_shorten_shared_deadline(
 ):
     from unittest.mock import patch
 
-    from velux_active_client import RateLimitState
+    from custom_components.velux_active.velux_active_client import RateLimitState
 
     entered, release = asyncio.Event(), asyncio.Event()
     calls = []
@@ -416,7 +434,9 @@ async def test_inflight_shorter_throttle_does_not_shorten_shared_deadline(
     async with aiohttp.ClientSession() as session:
         first = VeluxActiveAPI(session, base_url=str(server.make_url("")), rate_limit_state=state)
         second = VeluxActiveAPI(session, base_url=str(server.make_url("")), rate_limit_state=state)
-        with patch("velux_active_client.client.monotonic", return_value=1000):
+        with patch(
+            "custom_components.velux_active.velux_active_client.client.monotonic", return_value=1000
+        ):
             slow = asyncio.create_task(first._request("/slow"))
             await entered.wait()
             with pytest.raises(RateLimitError):
@@ -434,7 +454,7 @@ async def test_inflight_shorter_throttle_does_not_shorten_shared_deadline(
 @pytest.mark.parametrize("body", [b"{}", b"invalid-json"])
 async def test_truncated_http_429_registers_shared_deadline_before_body(socket_enabled, body):
     """An incomplete body cannot turn a header-level throttle into an outage."""
-    from velux_active_client import RateLimitState
+    from custom_components.velux_active.velux_active_client import RateLimitState
 
     calls = []
 
@@ -474,7 +494,9 @@ async def test_truncated_http_429_registers_shared_deadline_before_body(socket_e
 
 @pytest.mark.parametrize("code", [26, "26"])
 async def test_json_rate_limit_code_preserves_shared_full_deadline(response_api, monkeypatch, code):
-    monkeypatch.setattr("velux_active_client.client.monotonic", lambda: 1000.0)
+    monkeypatch.setattr(
+        "custom_components.velux_active.velux_active_client.client.monotonic", lambda: 1000.0
+    )
     state, calls, api = response_api
     state.update(payload={"error": {"code": code}}, headers={"Retry-After": "99999"})
     with pytest.raises(RateLimitError) as limited:
