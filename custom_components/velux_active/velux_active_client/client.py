@@ -189,7 +189,7 @@ class VeluxModule:
 
 
 class VeluxActiveAPI:
-    """Authenticate and poll without sending device commands."""
+    """Authenticate, poll, and submit explicit device commands without retries."""
 
     def __init__(
         self,
@@ -213,7 +213,12 @@ class VeluxActiveAPI:
         return self._rate_limit.deadline
 
     async def _request(
-        self, path: str, *, data: dict[str, str] | None = None, token: str | None = None
+        self,
+        path: str,
+        *,
+        data: dict[str, str] | None = None,
+        token: str | None = None,
+        json: dict[str, JSON] | None = None,
     ) -> dict[str, JSON]:
         if monotonic() < self._retry_at:
             raise RateLimitError(max(1, ceil(self._retry_at - monotonic())))
@@ -223,6 +228,7 @@ class VeluxActiveAPI:
                 "POST",
                 self._base_url + path,
                 data=data,
+                json=json,
                 headers=headers,
                 timeout=ClientTimeout(total=20),
             ) as response:
@@ -342,6 +348,15 @@ class VeluxActiveAPI:
             if self.auth_token is not None and self.auth_token.access_token == token:
                 self.auth_token.expires_at = datetime.min
         return await self._request(path, data=data, token=await self.access_token)
+
+    async def set_state(self, home: dict[str, JSON]) -> None:
+        """Send a command once; ambiguous transport failures must not renew an override."""
+        payload = await self._request(
+            "/syncapi/v1/setstate", json={"home": home}, token=await self.access_token
+        )
+        body = payload.get("body")
+        if payload.get("status") != "ok" or (isinstance(body, dict) and body.get("errors")):
+            raise APIConnectionError("VELUX rejected the device command")
 
     async def get_home_data(self) -> list[VeluxHome]:
         payload = await self._api_request("/api/homesdata")

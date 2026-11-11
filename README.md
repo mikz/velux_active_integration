@@ -9,8 +9,9 @@ cloud gateway's `is_raining` field. Sign in with the email address and password
 used by the VELUX ACTIVE app.
 
 It exposes gateway rain and status sensors, window and shutter positions, and
-battery diagnostics. Covers report position only. The integration sends no
-window, shutter, gateway, or rain-override commands.
+battery diagnostics. Covers report position only. Ordinary cover entities are observational. An optional, explicit
+`velux_active.open_during_rain` action provides temporary signed rain ventilation
+after gateway pairing; see below.
 
 ## Install or update a released version
 
@@ -119,10 +120,32 @@ or call it from an automation:
 action: velux_active.refresh
 ```
 
-The action sends no device commands. There are no custom triggers or conditions.
+The refresh action sends no device commands. There are no custom triggers or conditions.
 Use Home Assistant's standard state triggers and state conditions with these
 entities, such as triggering when the rain sensor changes to `on` or testing
 whether connectivity is `off`. Select your registered entity ID in the UI.
+
+### Optional temporary rain ventilation
+
+Open the integration's **Configure** action, select the account gateway, and enter
+its local IP address or hostname. When its LED flashes, press the physical gateway
+button once and submit the next form. Home Assistant retrieves and stores signing
+keys in the existing config entry options. Keep configuration backups private.
+Pairing needs local TCP port 25050 and does not move a window.
+
+`velux_active.open_during_rain` accepts one existing cloud window `entity_id` and
+an integer `position` from 1 to 50. It requires paired signing keys, a successful
+fresh cloud poll, a reachable window on that gateway, and reported rain. It sends
+one signed command with the rain override. API/product errors fail the action;
+ambiguous transport failures are never retried automatically. Position remains
+observed feedback, never an optimistic command result. Other cover actions stay
+read-only, and shutters are excluded.
+
+VELUX documents that supported windows close automatically after 15 minutes.
+Repeated calls can renew this override and admit rain. A sync controller must not
+retry an unmet opening after that closure if the intended behavior is a single
+ventilation period. The rain report can be stale, so a dry reading alone does not
+establish safe opening conditions. See [VELUX's rain-opening documentation](https://www.velux.ie/support/wiki/active-open-raining).
 
 ## Remove
 
@@ -181,8 +204,8 @@ all VELUX hardware or firmware revisions.
 | NXS / NXD | Reported battery and radio/connectivity diagnostics. |
 | Other types | Inventory presence only; no entities are created. |
 
-Available fields depend on the cloud snapshot. This integration has no open,
-close, stop, set-position, rain-override or device configuration action. It does
+Available fields depend on the cloud snapshot. Ordinary cover entities have no open, close, stop or set-position actions. The
+separate rain-ventilation action is limited to paired roof windows. It does
 not provide the local HomeKit connection or replace native VELUX protection.
 
 ## Use cases and automation examples
