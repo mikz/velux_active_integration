@@ -143,6 +143,9 @@ class Lab:
         assert self.rain in states
 
     async def loaded(self):
+        # Entry setup can finish before Core starts the recorder task queue.
+        if (await self.request("GET", "/api/core/state"))["state"] != "RUNNING":
+            return False
         entries = await self.ws("config_entries/get")
         return any(e["entry_id"] == self.entry and e["state"] == "loaded" for e in entries)
 
