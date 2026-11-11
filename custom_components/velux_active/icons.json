@@ -1,0 +1,23 @@
+{
+  "entity": {
+    "sensor": {
+      "wifi_strength": {
+        "default": "mdi:wifi"
+      },
+      "rf_strength": {
+        "default": "mdi:signal"
+      },
+      "battery_level": {
+        "default": "mdi:battery"
+      }
+    },
+    "binary_sensor": {
+      "calibrating": {
+        "default": "mdi:tune"
+      },
+      "silent": {
+        "default": "mdi:volume-off"
+      }
+    }
+  }
+}

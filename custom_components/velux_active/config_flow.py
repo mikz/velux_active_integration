@@ -1,82 +1,97 @@
-"""Config flow for velux_active integration."""
-
-from __future__ import annotations
-
-import logging
-from typing import Any
+"""Configure an account or renew its password without changing account identity."""
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import aiohttp_client  # Added import
+from homeassistant.helpers import aiohttp_client, selector
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
-from . import api
-from .const import DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
-
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
-    }
-)
+from .api import APIConnectionError, InvalidAuthError, VeluxActiveAPI
+from .const import DOMAIN, HOMEKIT_MODELS, async_rate_limit_state
+from .coordinator import VeluxActiveConfigEntry
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect.
-
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
-    """
-    # Get the web session from Home Assistant
-    websession = aiohttp_client.async_get_clientsession(hass)
-    hub = api.VeluxActiveAPI(websession)
-
-    try:
-        await hub.authenticate(data[CONF_USERNAME], data[CONF_PASSWORD])
-    except api.InvalidAuthError as err:
-        # Raise InvalidAuth if authentication fails
-        raise InvalidAuth from err
-    except Exception as err:
-        _LOGGER.error("Unexpected error while authenticating: %s", err)
-        raise CannotConnect from err
-
-    # Return info that you want to store in the config entry.
-    return {"title": "Velux Active"}
-
-
-class ConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for velux_active."""
+class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Keep the original username/password storage and version-one identity."""
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Handle the initial step."""
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            try:
-                info = await validate_input(self.hass, user_input)
-            except CannotConnect:
-                errors["base"] = "cannot_connect"
-            except InvalidAuth:
-                errors["base"] = "invalid_auth"
-            except Exception as err:
-                _LOGGER.exception("Unexpected exception: %s", err)
-                errors["base"] = "unknown"
-            else:
-                return self.async_create_entry(title=info["title"], data=user_input)
+    async def async_step_homekit(self, discovery_info: ZeroconfServiceInfo) -> ConfigFlowResult:
+        """Offer existing cloud-account sign-in, without trusting a LAN identity."""
+        model: object = discovery_info.properties.get("md")
+        if (
+            discovery_info.type != "_hap._tcp.local."
+            or not isinstance(model, str)
+            or model not in HOMEKIT_MODELS
+        ):
+            return self.async_abort(reason="not_supported")
+        return await self.async_step_discovery_confirm()
 
+    async def async_step_discovery_confirm(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        """Use HA's no-account-identity discovery convention and native dedup."""
+        if user_input is not None:
+            return await self.async_step_user()
+        await self._async_handle_discovery_without_unique_id()
+        return self.async_show_form(step_id="discovery_confirm", data_schema=vol.Schema({}))
+
+    async def _form(
+        self,
+        step_id: str,
+        user_input: dict[str, str] | None,
+        entry: VeluxActiveConfigEntry | None = None,
+    ) -> ConfigFlowResult:
+        errors = {}
+        if user_input is not None:
+            if entry is not None and user_input[CONF_USERNAME] != entry.data[CONF_USERNAME]:
+                errors["base"] = "wrong_account"
+            else:
+                api = VeluxActiveAPI(
+                    aiohttp_client.async_get_clientsession(self.hass),
+                    rate_limit_state=async_rate_limit_state(self.hass),
+                )
+                try:
+                    await api.authenticate(user_input[CONF_USERNAME], user_input[CONF_PASSWORD])
+                    await api.get_home_data()
+                except InvalidAuthError:
+                    errors["base"] = "invalid_auth"
+                except APIConnectionError:
+                    errors["base"] = "cannot_connect"
+                else:
+                    if entry is not None:
+                        return self.async_update_reload_and_abort(entry, data_updates=user_input)
+                    return self.async_create_entry(title="Velux Active", data=user_input)
+        username = vol.Required(CONF_USERNAME)
+        if entry is not None:
+            username = vol.Required(CONF_USERNAME, default=entry.data[CONF_USERNAME])
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id=step_id,
+            data_schema=vol.Schema(
+                {
+                    username: selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.EMAIL)
+                    ),
+                    vol.Required(CONF_PASSWORD): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
+                }
+            ),
+            errors=errors,
         )
 
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+    async def async_step_user(self, user_input: dict[str, str] | None = None) -> ConfigFlowResult:
+        return await self._form("user", user_input)
 
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+    async def async_step_reauth(self, entry_data: dict[str, str]) -> ConfigFlowResult:
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        return await self._form("reauth_confirm", user_input, self._get_reauth_entry())
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        return await self._form("reconfigure", user_input, self._get_reconfigure_entry())
