@@ -1,4 +1,4 @@
-"""Typed read-only VELUX ACTIVE cloud protocol; caller owns the aiohttp session."""
+"""Typed VELUX ACTIVE cloud protocol; caller owns the aiohttp session."""
 
 from .client import (
     APIConnectionError,

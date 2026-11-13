@@ -1,4 +1,4 @@
-"""Compatibility imports for the bundled read-only client."""
+"""Compatibility imports for the bundled cloud client."""
 
 from .velux_active_client import (
     APIConnectionError,

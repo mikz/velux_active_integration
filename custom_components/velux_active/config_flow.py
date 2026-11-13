@@ -1,20 +1,27 @@
 """Configure an account or renew its password without changing account identity."""
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers import aiohttp_client, selector
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import APIConnectionError, InvalidAuthError, VeluxActiveAPI
 from .const import DOMAIN, HOMEKIT_MODELS, async_rate_limit_state
 from .coordinator import VeluxActiveConfigEntry
+from .pairing_flow import VeluxPairingFlow
 
 
 class VeluxConfigFlow(ConfigFlow, domain=DOMAIN):
     """Keep the original username/password storage and version-one identity."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> VeluxPairingFlow:
+        return VeluxPairingFlow()
 
     async def async_step_homekit(self, discovery_info: ZeroconfServiceInfo) -> ConfigFlowResult:
         """Offer existing cloud-account sign-in, without trusting a LAN identity."""

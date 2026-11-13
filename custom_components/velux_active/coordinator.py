@@ -45,6 +45,8 @@ type ManualResult = tuple[bool, BaseException | None]
 class VeluxCoordinator(DataUpdateCoordinator[VeluxSnapshot]):
     """Poll status once per minute and let HA handle retries and reauthentication."""
 
+    config_entry: VeluxActiveConfigEntry
+
     def __init__(self, hass: HomeAssistant, entry: VeluxActiveConfigEntry) -> None:
         super().__init__(
             hass,

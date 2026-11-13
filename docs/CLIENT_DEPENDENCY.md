@@ -25,3 +25,9 @@ The protocol follows [pyatmo](https://github.com/jabesq-org/pyatmo) transport an
 unofficial VELUX password protocol has no published compatibility guarantee.
 A future Home Assistant Core submission may require a different dependency
 boundary; Core admission is separate from this custom integration's installation.
+
+The optional gateway-pairing protocol is adapted from Niek/ha-velux-active
+(MIT, copyright Niek van der Maas). Its license notice is retained in
+`velux_active_client/pairing.py`. Pairing uses Home Assistant's cryptography package;
+signed window commands use the Python standard library. Neither requires PyPI
+publication of the bundled client.

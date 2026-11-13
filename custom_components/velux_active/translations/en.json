@@ -44,12 +44,6 @@
       "already_in_progress": "VELUX ACTIVE account setup is already in progress."
     }
   },
-  "services": {
-    "refresh": {
-      "name": "Refresh",
-      "description": "Request fresh cloud status for all configured homes."
-    }
-  },
   "entity": {
     "sensor": {
       "wifi_strength": {
@@ -116,6 +110,29 @@
     },
     "rate_limited": {
       "message": "VELUX cloud requests are temporarily rate limited"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pair cloud window control",
+        "description": "Optional: pair your gateway to enable cloud window controls. Enter its local IP address or hostname. Keep physical access to its button.",
+        "data": {
+          "gateway_id": "Gateway",
+          "gateway_host": "Gateway IP address or hostname"
+        }
+      },
+      "pair_button": {
+        "title": "Press the gateway button",
+        "description": "When the gateway LED flashes, press its physical button once, then submit this form. Pairing stores signing keys in Home Assistant. It does not move a window."
+      }
+    },
+    "error": {
+      "pairing_failed": "Gateway pairing failed. Check the address, button and local connection, then retry.",
+      "invalid_auth": "VELUX rejected the login. Renew your credentials using Reconfigure, then retry pairing."
+    },
+    "abort": {
+      "not_loaded": "Load the cloud account before pairing."
     }
   }
 }
