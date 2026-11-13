@@ -1,7 +1,5 @@
 {
   "name": "VELUX ACTIVE",
   "homeassistant": "2026.9.3",
-  "render_readme": true,
-  "zip_release": true,
-  "filename": "velux_active.zip"
+  "render_readme": true
 }

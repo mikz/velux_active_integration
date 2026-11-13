@@ -128,7 +128,8 @@
       }
     },
     "error": {
-      "pairing_failed": "Gateway pairing failed. Check the address, button and local connection, then retry."
+      "pairing_failed": "Gateway pairing failed. Check the address, button and local connection, then retry.",
+      "invalid_auth": "VELUX rejected the login. Renew your credentials using Reconfigure, then retry pairing."
     },
     "abort": {
       "not_loaded": "Load the cloud account before pairing."

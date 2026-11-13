@@ -7,7 +7,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState, ConfigFlowResult, OptionsFlow
 from homeassistant.helpers import selector
 
-from .api import APIConnectionError, VeluxGatewayData
+from .api import APIConnectionError, InvalidAuthError, VeluxGatewayData
 from .coordinator import VeluxActiveConfigEntry
 from .velux_active_client.pairing import VeluxPairingError, retrieve_signing_key
 
@@ -48,6 +48,8 @@ class VeluxPairingFlow(OptionsFlow):
                             "modules": [{"id": gateway_id, "retrieve_key": True}],
                         }
                     )
+                except InvalidAuthError:
+                    errors["base"] = "invalid_auth"
                 except APIConnectionError:
                     errors["base"] = "pairing_failed"
                 else:

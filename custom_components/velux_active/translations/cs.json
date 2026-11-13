@@ -83,7 +83,8 @@
       }
     },
     "error": {
-      "pairing_failed": "Párování brány selhalo. Zkontrolujte adresu, tlačítko a místní připojení a zkuste to znovu."
+      "pairing_failed": "Párování brány selhalo. Zkontrolujte adresu, tlačítko a místní připojení a zkuste to znovu.",
+      "invalid_auth": "VELUX odmítl přihlášení. Obnovte přihlašovací údaje pomocí akce Znovu nakonfigurovat a poté párování opakujte."
     },
     "abort": {
       "not_loaded": "Před párováním načtěte cloudový účet."

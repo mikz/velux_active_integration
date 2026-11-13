@@ -13,19 +13,24 @@ battery diagnostics. Pairing the gateway enables standard Home Assistant open,
 close, and position controls for its roof windows. Unpaired windows and shutters
 remain observational. Household automation rules belong in Home Assistant.
 
-## Install or update a released version
+## Install or update
 
 Requires Home Assistant **2026.9.3 or later**. The test lab covers 2026.9.3,
 2026.9.4 and 2026.11.1.
 
-1. Add [this repository](https://github.com/mikz/velux_active_integration) to HACS
-   as a custom **Integration** repository.
-2. Download **VELUX ACTIVE**, then restart Home Assistant.
+1. In Home Assistant 2026.11 or later, open **Settings > Marketplace** and use
+   **Add from link** with [this repository](https://github.com/mikz/velux_active_integration).
+   On earlier versions, add it to HACS as a custom **Integration** repository.
+2. Install **VELUX ACTIVE**. On HACS, restart Home Assistant after downloading.
 3. Open **Settings > Devices & services**, select **Add integration**, and search
    for **VELUX ACTIVE**.
 4. Enter your VELUX account email address and password.
 
-For an existing installation, update the files and restart Home Assistant.
+Marketplace and HACS download the integration directory from the selected
+GitHub version, or from `main` when there are no releases. No release ZIP is
+required. The bundled cloud client is included in either case.
+
+For an existing installation, install the offered update and restart Home Assistant.
 Keep the existing integration entry: account configuration, device identifiers,
 and entity unique IDs are preserved. If you previously disabled the integration,
 enable it after updating. The original rain sensor entity ID remains registered.

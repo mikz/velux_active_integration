@@ -11,7 +11,12 @@ from aiohttp import ClientSession, web
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.velux_active.api import APIConnectionError, AuthToken, VeluxActiveAPI
+from custom_components.velux_active.api import (
+    APIConnectionError,
+    AuthToken,
+    InvalidAuthError,
+    VeluxActiveAPI,
+)
 from custom_components.velux_active.velux_active_client.pairing import SigningKey
 from tests.integration.test_quality import loaded as loaded
 
@@ -208,7 +213,11 @@ async def test_pairing_rejects_unloaded_account(hass, loaded):
     assert result["type"] == "abort" and result["reason"] == "not_loaded"
 
 
-async def test_pairing_errors_preserve_previous_keys(hass, loaded):
+@pytest.mark.parametrize(
+    ("exception", "error"),
+    [(APIConnectionError, "pairing_failed"), (InvalidAuthError, "invalid_auth")],
+)
+async def test_pairing_errors_preserve_previous_keys(hass, loaded, exception, error):
     from custom_components.velux_active.velux_active_client.pairing import VeluxPairingError
 
     entry, _, api = loaded
@@ -225,11 +234,13 @@ async def test_pairing_errors_preserve_previous_keys(hass, loaded):
     entry.runtime_data.data = previous
     assert result["errors"] == {"base": "pairing_failed"}
     result = await hass.config_entries.options.async_configure(result["flow_id"], None)
-    with patch.object(api, "set_state", side_effect=APIConnectionError("synthetic")):
+    with patch.object(api, "set_state", side_effect=exception("synthetic")) as send:
         result = await hass.config_entries.options.async_configure(
             result["flow_id"], {"gateway_id": gateway.id, "gateway_host": "synthetic.invalid"}
         )
-    assert result["errors"] == {"base": "pairing_failed"}
+    send.assert_awaited_once()
+    assert result["step_id"] == "init" and result["errors"] == {"base": error}
+    assert dict(entry.options) == KEYS
     with patch.object(api, "set_state", new_callable=AsyncMock):
         result = await hass.config_entries.options.async_configure(
             result["flow_id"], {"gateway_id": gateway.id, "gateway_host": "synthetic.invalid"}
