@@ -59,6 +59,7 @@ async def test_cover_command_signed_once_without_rain_policy(hass, loaded, rain)
         await command(hass, entity_id)
     send.assert_awaited_once()
     home = send.call_args.args[0]
+    assert home["timezone"] == hass.config.time_zone
     module = home["modules"][0]
     message = f"target_position12{module['timestamp']}{module['nonce']}{module['id']}"
     expected = base64.urlsafe_b64encode(
@@ -162,7 +163,13 @@ async def test_command_http_checks_product_errors_without_retry(
         else:
             with pytest.raises(APIConnectionError):
                 await api.set_state({"id": "home", "modules": []})
-    assert calls == [{"home": {"id": "home", "modules": []}}]
+    assert calls == [
+        {
+            "app_type": "app_velux",
+            "app_version": "791304000",
+            "home": {"id": "home", "modules": []},
+        }
+    ]
 
 
 async def test_native_open_close_and_no_rain_service(hass, loaded):

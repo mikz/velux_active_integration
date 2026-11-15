@@ -13,7 +13,7 @@ from typing import NoReturn, cast
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
-from .const import API_URL, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET
+from .const import API_URL, APP_TYPE, APP_VERSION, OAUTH2_CLIENT_ID, OAUTH2_CLIENT_SECRET
 
 type JSON = None | bool | int | float | str | list[JSON] | dict[str, JSON]
 
@@ -352,7 +352,9 @@ class VeluxActiveAPI:
     async def set_state(self, home: dict[str, JSON]) -> None:
         """Send a command once; ambiguous transport failures must not renew an override."""
         payload = await self._request(
-            "/syncapi/v1/setstate", json={"home": home}, token=await self.access_token
+            "/syncapi/v1/setstate",
+            json={"app_type": APP_TYPE, "app_version": APP_VERSION, "home": home},
+            token=await self.access_token,
         )
         body = payload.get("body")
         if payload.get("status") != "ok" or (isinstance(body, dict) and body.get("errors")):
