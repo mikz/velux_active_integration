@@ -119,7 +119,11 @@ class VeluxCover(VeluxEntity[VeluxWindowData | VeluxShutterData], CoverEntity):
             raise ServiceValidationError("A reachable window on the paired gateway is required")
         try:
             await self.coordinator.api.set_state(
-                {"id": window.home.id, "modules": [signed_window(window, kwargs["position"], keys)]}
+                {
+                    "id": window.home.id,
+                    "timezone": self.hass.config.time_zone,
+                    "modules": [signed_window(window, kwargs["position"], keys)],
+                }
             )
         except (APIConnectionError, ValueError, KeyError) as err:
             raise HomeAssistantError("VELUX window command was not confirmed") from err
